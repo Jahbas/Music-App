@@ -27,6 +27,7 @@ const OLED_UNLOCK_KEY = "oled-mode-unlocked";
 const OLED_UNLOCK_TAPS = 10;
 const OLED_HINT_AFTER_TAPS = 3;
 const GITHUB_REPO_URL = "https://github.com/Jahbas/Music";
+const GITHUB_ELECTRON_REPO_URL = "https://github.com/Jahbas/Music-App";
 
 function getOledUnlocked(): boolean {
   try {
@@ -252,12 +253,27 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     await libraryState.hydrate();
   };
 
-  const handleOpenGitHubStar = () => {
-    try {
-      window.open(GITHUB_REPO_URL, "_blank", "noopener,noreferrer");
-    } catch {
-      window.location.href = GITHUB_REPO_URL;
+  const openExternalUrl = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    const api = window.electronAPI;
+    if (api?.openExternal) {
+      api.openExternal(trimmed);
+      return;
     }
+    try {
+      window.open(trimmed, "_blank", "noopener,noreferrer");
+    } catch {
+      window.location.href = trimmed;
+    }
+  };
+
+  const handleOpenGitHubStar = () => {
+    openExternalUrl(GITHUB_REPO_URL);
+  };
+
+  const handleOpenGitHubElectronRepo = () => {
+    openExternalUrl(GITHUB_ELECTRON_REPO_URL);
   };
 
   if (!isOpen) {
@@ -862,21 +878,33 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     <div className="settings-sections">
       <section className="settings-section">
         <h4 className="settings-section-title">Support</h4>
+        <p className="settings-description">
+          Support me for free! Choose where you like to listen.
+        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Star on GitHub</span>
+          <span className="settings-row-label">Website player</span>
           <button
             type="button"
             className="secondary-button settings-row-action support-rainbow-button"
             onClick={handleOpenGitHubStar}
             title={GITHUB_REPO_URL}
-            aria-label="Open GitHub to star the project"
+            aria-label="Open the website player repository"
           >
-            Open
+            Website player
           </button>
         </div>
-        <p className="settings-description">
-          If you like Music, starring it helps other people find it.
-        </p>
+        <div className="settings-row">
+          <span className="settings-row-label">Desktop player</span>
+          <button
+            type="button"
+            className="secondary-button settings-row-action support-rainbow-button"
+            onClick={handleOpenGitHubElectronRepo}
+            title={GITHUB_ELECTRON_REPO_URL}
+            aria-label="Open the desktop player repository"
+          >
+            Desktop player
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -988,17 +1016,29 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         </header>
         <div className="settings-fullscreen-body">
           <nav className="settings-tabs" aria-label="Settings sections">
-            {SETTINGS_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`settings-tab${activeTab === tab.id ? " settings-tab--active" : ""}`}
-                onClick={() => setActiveTab(tab.id)}
-                aria-current={activeTab === tab.id ? "page" : undefined}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {SETTINGS_TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              const isSupport = tab.id === "support";
+              const classes = [
+                "settings-tab",
+                isActive ? "settings-tab--active" : "",
+                isSupport ? "settings-tab--support" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={classes}
+                  onClick={() => setActiveTab(tab.id)}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </nav>
           <main className="settings-content">
             {content}

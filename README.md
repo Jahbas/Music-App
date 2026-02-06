@@ -1,61 +1,95 @@
-# Music App
-# I think it should be working if the exe installer isn't working just build from source I will soon give a hotfix I currently have a fix but I ship with the new planned feature.
-A fast, local‑first desktop music player built on the open source [Music](https://github.com/Jahbas/Music) project.
+# Music – Electron Edition
 
-Because everything runs locally and there is no heavy streaming client around it, **Music App typically uses noticeably less memory than big streaming apps like Spotify or Apple Music**, especially once your library is indexed and playing offline files.
+A slick, local‑first desktop music player focused on **fast startup, low memory usage and a clean Windows‑native feel**.
 
 Current desktop app version: **1.4.0** (see `CHANGELOG.md`).
 
-## Structure
+---
 
-- `web/` – Original React/Vite music web app (runs fully in the browser context).
-- `electron/` – Electron main and preload processes.
-- `dist-electron/` – Compiled Electron TypeScript output.
-- `web/dist/` – Built web assets for production.
-- `build/icons/app.png` – Window/taskbar icon used by Electron at runtime.
-- `build/icons/app.ico` – Windows installer / Start menu / Task Manager icon (multi-size, transparent).
+## Highlights
 
-## Quick start for non‑technical users
+- **Local library first**: Point the app at your music folders and build a library that stays on your machine.
+- **Playlists & folders**: Organise your music with playlists, folders and pinned items in the sidebar.
+- **Watchlist playlists**: Attach a playlist to a folder – new files dropped into that folder are automatically imported.
+- **Per‑profile likes**: Liked Songs is profile‑aware so different users can have their own favourites.
+- **Advanced audio controls**: Fullscreen player, queue, speed controls and an advanced EQ editor.
+- **Low memory footprint**: Tuned specifically to use much less RAM than big streaming clients.
 
-If you already have a built installer in `dist/` (for example: `Music Setup 1.4.0.exe`), you don’t need Node or npm:
+---
 
-1. Locate `Music Setup 1.4.0.exe` in the `dist/` folder.
-2. Double‑click it and follow the installer steps.
+## UI preview
+
+| Playlist view | Liked Songs | Fullscreen player |
+| --- | --- | --- |
+| ![Playlist view](./imgs/previews/playlist.preview.png) | ![Liked Songs](./imgs/previews/Likedsongs.preview.png) | ![Fullscreen player](./imgs/previews/fullscreenplayer.preview.png) |
+
+| Queue | Search |
+| --- | --- |
+| ![Queue](./imgs/previews/queue.preview.png) | ![Search](./imgs/previews/search.preview.png) |
+
+| Settings | Playlist settings |
+| --- | --- |
+| ![Settings](./imgs/previews/Settings.preview.png) | ![Playlist settings](./imgs/previews/Playlistsettings.preview.png) |
+
+| Advanced EQ |
+| --- |
+| ![Advanced EQ editor](./imgs/previews/advancedEQ.preview.png) |
+
+---
+
+## Memory & performance
+
+This Electron build is tuned to stay lightweight compared to typical streaming clients.
+
+| Music – Electron Edition | Spotify desktop client |
+| --- | --- |
+| ![Music memory](./imgs/memory.performance/Music.memory.png) | ![Spotify memory](./imgs/memory.performance/Spotify.memory.png) |
+
+Numbers will vary by library size and other apps running, but the goal is to stay noticeably lean while your library scales.
+
+---
+
+## Installing the desktop app (Windows)
+
+You don’t need Node or npm to use the app – only if you want to develop it.
+
+1. Locate the installer in `dist/` (for example: `Music Setup 1.4.0.exe`).  
+2. Double‑click it and follow the installer steps.  
 3. Launch **Music** from the Start menu or desktop shortcut.
 
-That’s it – you get the full Music player as a desktop app.
+That’s it – you now have a native‑feeling desktop player with your local library.
 
-## Development
+---
 
-1. Install dependencies:
+<details>
+<summary><strong>Developer setup & build</strong></summary>
 
-   ```bash
-   npm install
-   cd web && npm install
-   ```
+### Project layout
 
-2. Run the dev app:
+- `electron/` – Electron main and preload processes.
+- `web/` – React/Vite renderer (UI & audio engine).
+- `dist-electron/` – Compiled Electron TypeScript output.
+- `web/dist/` – Built web assets for production.
+- `build/icons/` – App icons for the window, taskbar and installer.
 
-   ```bash
-   cd ..
-   npm run dev
-   ```
+### Running the dev build
 
-   This will:
+```bash
+# From the repo root
+npm install
+cd web && npm install
+cd ..
+npm run dev
+```
 
-   - Start the Vite dev server for the web app on `http://localhost:5173`.
-   - Launch Electron pointing at that dev server.
+This starts the Vite dev server on `http://localhost:5173` and launches Electron pointing at it. Hot reload works for both the renderer and Electron process.
 
-   All web features (IndexedDB library, playlists, queue, Wrapped, telemetry, drag-and-drop, keyboard shortcuts, themes, profiles, etc.) run unchanged inside the Electron window.
+### Building a production installer
 
-## Production build (for releasing a new installer)
-
-1. Ensure your icons are in place:
-
-   - `build/icons/app.png` – PNG with transparent background (used by the Electron window).
-   - `build/icons/app.ico` – ICO with multiple sizes (16/32/48/64/128/256) and transparent background (used by the installer / EXE).
-
-2. Build the app and installer:
+1. Make sure icons exist:
+   - `build/icons/app.png` – used by the Electron window.
+   - `build/icons/app.ico` – multi‑size ICO used by the installer / EXE.
+2. From the repo root, run:
 
    ```bash
    npm run build
@@ -63,11 +97,26 @@ That’s it – you get the full Music player as a desktop app.
 
    This will:
 
-   - Build the web app into `web/dist` using Vite with `base: "./"` so assets work with `file://`.
-   - Compile Electron TypeScript into `dist-electron`.
-   - Run `electron-builder` to create a Windows installer in `dist/` (for example: `Music Setup 1.4.0.exe`).
+   - Build the web app into `web/dist` with a `file://`‑friendly base path.
+   - Compile the Electron code into `dist-electron`.
+   - Run `electron-builder` to create a Windows installer in `dist/`.
 
-3. Distribute the installer:
+3. Share the generated `dist/Music Setup x.y.z.exe` file.
 
-   - Share the `dist/Music Setup 1.4.0.exe` file.
-   - Non‑technical users can install it by double‑clicking and following the wizard; they never need to touch Node, npm, or the source code.
+</details>
+
+---
+
+## Fix list (this fork)
+
+- **Watchlist folder picker**: Playlist watchlist “Browse” now consistently uses the native Windows folder picker and supports a default path so it opens near the current watch folder.
+- **Likes in packaged builds**: Liking tracks (including right‑click “Save to Liked Songs”) now works correctly in the built Electron app, not just in dev.
+- **Playlist right‑click actions**: Added “Remove from playlist” to the track context menu when viewing a playlist.
+
+---
+
+## Future features / optimisations
+
+- **Custom in‑app folder browser**: Optional skinnable folder picker that matches the app’s theme while keeping the current watchlist logic.
+- **Watchlist quality‑of‑life tweaks**: Remember last‑used watchlist roots, quick access to common library locations, and clearer messaging for inaccessible folders.
+- **Further performance tuning**: More optimisations for huge libraries and watchlist rescans (batched updates, smarter diffing and better progress feedback).

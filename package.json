@@ -49,5 +49,8 @@
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0"
   }
 }

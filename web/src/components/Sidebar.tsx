@@ -340,6 +340,20 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
   const isAnyContextMenuOpen =
     playlistsContextMenu || foldersContextMenu || playlistRowContextMenu || folderRowContextMenu;
 
+  // Hide the bottom music bar while playlist or folder settings are open.
+  useEffect(() => {
+    const shouldHide = editingPlaylist !== null || editingFolder !== null;
+    const body = document.body;
+    if (shouldHide) {
+      body.classList.add("player-bar-hidden");
+    } else {
+      body.classList.remove("player-bar-hidden");
+    }
+    return () => {
+      body.classList.remove("player-bar-hidden");
+    };
+  }, [editingPlaylist, editingFolder]);
+
   useEffect(() => {
     if (!isAnyContextMenuOpen) return;
     const closeAll = () => {

@@ -28,6 +28,9 @@ type FolderState = {
       description?: string;
       pinned?: boolean;
       order?: number | null;
+      watchEnabled?: boolean;
+      watchPath?: string;
+      watchPlaylistId?: string;
     }
   ) => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
@@ -129,7 +132,7 @@ export const useFolderStore = create<FolderState>((set, get) => ({
   },
   updateFolder: async (
     folderId,
-    { name, description, pinned, order }
+    { name, description, pinned, order, watchEnabled, watchPath, watchPlaylistId }
   ) => {
     const resolvedOrder =
       order === null ? undefined : order !== undefined ? order : undefined;
@@ -144,6 +147,9 @@ export const useFolderStore = create<FolderState>((set, get) => ({
         ...(description !== undefined && { description }),
         ...(pinned !== undefined && { pinned }),
         ...(hasOrder && { order: resolvedOrder }),
+        ...(watchEnabled !== undefined && { watchEnabled }),
+        ...(watchPath !== undefined && { watchPath }),
+        ...(watchPlaylistId !== undefined && { watchPlaylistId }),
         updatedAt: Date.now(),
       };
     });

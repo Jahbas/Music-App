@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useAudio } from "../hooks/useAudio";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -27,6 +27,10 @@ export const Layout = () => {
   const hydrateFolders = useFolderStore((state) => state.hydrate);
   const hydratePlayHistory = usePlayHistoryStore((state) => state.hydrate);
   const hydrateProfileLikes = useProfileLikesStore((state) => state.hydrate);
+  const folders = useFolderStore((s) => s.folders);
+  const playlists = usePlaylistStore((s) => s.playlists);
+  const addFilePaths = useLibraryStore((s) => s.addFilePaths);
+  const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist);
   useAudio();
   useTelemetry();
   useShortcuts();
@@ -58,6 +62,45 @@ export const Layout = () => {
     hydratePlayHistory,
     hydrateProfileLikes,
   ]);
+
+  // Resume watched playlist watchers (desktop app only).
+  const startedWatchersRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.watchStart || !api?.watchStop) return;
+
+    const started = startedWatchersRef.current;
+    const enabledIds = new Set<string>();
+
+    for (const p of playlists) {
+      const enabled = p.watchEnabled === true && Boolean(p.watchPath);
+      if (!enabled) continue;
+      enabledIds.add(p.id);
+      if (!started.has(p.id)) {
+        api.watchStart({ folderId: p.id, path: p.watchPath!, playlistId: p.id });
+        started.add(p.id);
+      }
+    }
+
+    for (const id of Array.from(started)) {
+      if (!enabledIds.has(id)) {
+        api.watchStop(id);
+        started.delete(id);
+      }
+    }
+  }, [playlists]);
+
+  // Receive watcher events (desktop app only) and import new files.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onWatchFiles) return;
+    return api.onWatchFiles(async ({ playlistId, paths }) => {
+      const trackIds = await addFilePaths(paths);
+      if (trackIds.length > 0) {
+        await addTracksToPlaylist(playlistId, trackIds);
+      }
+    });
+  }, [addFilePaths, addTracksToPlaylist]);
 
   // Global shortcuts are handled by useShortcuts.
 

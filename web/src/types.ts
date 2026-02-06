@@ -12,6 +12,10 @@ export type Track = {
   sourceType: TrackSourceType;
   fileBlob?: Blob;
   fileHandle?: FileSystemFileHandle;
+  /** Optional original file path (used by desktop watcher imports for de-dupe). */
+  sourcePath?: string;
+  /** Optional content hash (desktop watcher de-dupe). */
+  sourceHash?: string;
   artworkId?: string;
   liked?: boolean;
 };
@@ -43,6 +47,9 @@ export type Playlist = {
   pinned?: boolean;
   order?: number;
   folderId?: string;
+  /** Desktop-only: auto-import from a watched folder into this playlist. */
+  watchEnabled?: boolean;
+  watchPath?: string;
 };
 
 export type Profile = {
@@ -62,6 +69,13 @@ export type PlaylistFolder = {
   pinned?: boolean;
   order?: number;
   profileId?: string;
+  /**
+   * Watched folder automation (desktop only). When enabled, the app watches
+   * `watchPath` for new audio files and adds them to `watchPlaylistId`.
+   */
+  watchEnabled?: boolean;
+  watchPath?: string;
+  watchPlaylistId?: string;
 };
 
 export type ThemeMode = "dark" | "light" | "oled";

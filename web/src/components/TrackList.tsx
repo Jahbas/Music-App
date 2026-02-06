@@ -23,6 +23,8 @@ type TrackListProps = {
   /** When provided, used for like state and sort-by-liked instead of track.liked (per-profile likes). */
   likedTrackIds?: string[];
   onEditTags?: (trackId: string) => void;
+  /** When provided, shows "Remove from playlist" option in context menu. */
+  onRemoveFromPlaylist?: (trackIds: string[]) => Promise<void>;
 };
 
 const formatDuration = (seconds: number) => {
@@ -109,6 +111,7 @@ export const TrackList = ({
   onToggleLike,
   likedTrackIds,
   onEditTags,
+  onRemoveFromPlaylist,
 }: TrackListProps) => {
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [sortState, setSortState] = useState<{ key: SortKey; dir: SortDir } | null>(null);
@@ -284,9 +287,10 @@ export const TrackList = ({
   }, [highlightTrackId]);
 
   const handleContextMenuAction = useCallback(
-    (fn: () => void) => {
-      fn();
-      setContextMenu(null);
+    (fn: () => void | Promise<void>) => {
+      void Promise.resolve(fn()).then(() => {
+        setContextMenu(null);
+      });
     },
     []
   );
@@ -340,14 +344,30 @@ export const TrackList = ({
               className="dropdown-item"
               role="menuitem"
               onClick={() =>
-                handleContextMenuAction(() => {
-                  contextMenu.trackIds.forEach((id) => onToggleLike(id));
+                handleContextMenuAction(async () => {
+                  await Promise.all(
+                    contextMenu.trackIds.map((id) => onToggleLike(id))
+                  );
                 })
               }
             >
               {likedTrackIds?.includes(contextMenu.primaryTrackId)
                 ? "Remove from Liked Songs"
                 : "Save to Liked Songs"}
+            </button>
+          )}
+          {onRemoveFromPlaylist && (
+            <button
+              type="button"
+              className="dropdown-item"
+              role="menuitem"
+              onClick={() =>
+                handleContextMenuAction(async () => {
+                  await onRemoveFromPlaylist(contextMenu.trackIds);
+                })
+              }
+            >
+              Remove from playlist
             </button>
           )}
           {playlists.length > 0 && (

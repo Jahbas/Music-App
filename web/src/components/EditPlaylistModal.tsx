@@ -49,6 +49,9 @@ export const EditPlaylistModal = ({
   const [infoExpanded, setInfoExpanded] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const [watchEnabled, setWatchEnabled] = useState(false);
+  const [watchPath, setWatchPath] = useState("");
+  const [watchInfoHover, setWatchInfoHover] = useState(false);
 
   useEffect(() => {
     if (playlist) {
@@ -56,6 +59,8 @@ export const EditPlaylistModal = ({
       setDescription(playlist.description ?? "");
       setPinned(playlist.pinned ?? false);
       setFolderId(playlist.folderId ?? "");
+      setWatchEnabled(playlist.watchEnabled ?? false);
+      setWatchPath(playlist.watchPath ?? "");
       setCoverFile(undefined);
       setBannerFile(undefined);
       setConfirmDelete(false);
@@ -68,12 +73,25 @@ export const EditPlaylistModal = ({
     if (!playlist || !trimmed || trimmed.length > NAME_MAX_LENGTH) {
       return;
     }
+    const pathTrimmed = watchPath.trim();
+    const shouldWatch = watchEnabled && Boolean(pathTrimmed);
     await updatePlaylist(playlist.id, {
       name: trimmed,
       description: description.trim() || undefined,
       pinned,
       folderId: folderId || null,
+      watchEnabled: shouldWatch,
+      watchPath: pathTrimmed || undefined,
     });
+
+    const api = window.electronAPI;
+    if (api?.watchStart && api?.watchStop) {
+      if (shouldWatch && pathTrimmed) {
+        api.watchStart({ folderId: playlist.id, path: pathTrimmed, playlistId: playlist.id });
+      } else {
+        api.watchStop(playlist.id);
+      }
+    }
     if (coverFile) {
       await updatePlaylistImage(playlist.id, coverFile);
     }
@@ -153,88 +171,99 @@ export const EditPlaylistModal = ({
 
           <section className="settings-section">
             <h4 className="settings-section-title">Appearance</h4>
-            <div className="form-image-upload">
-              <span className="form-image-upload-label">Cover image</span>
-              <input
-                ref={coverInputRef}
-                type="file"
-                accept="image/*"
-                className="form-image-upload-input"
-                aria-label="Choose cover image"
-                onChange={(event) =>
-                  setCoverFile(event.target.files?.[0] ?? undefined)
-                }
-              />
-              <div className="form-image-upload-row">
-                <button
-                  type="button"
-                  className="upload-button form-image-upload-button"
-                  onClick={() => coverInputRef.current?.click()}
-                >
-                  {coverFile
-                    ? coverFile.name
-                    : playlist.imageId
-                      ? "Change image"
-                      : "Choose image"}
-                </button>
-                {hasCover && (
+            <div className="settings-row" style={{ gap: 12, alignItems: "flex-start" }}>
+              <div className="form-image-upload" style={{ flex: 1 }}>
+                <span className="form-image-upload-label">Cover image</span>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="form-image-upload-input"
+                  aria-label="Choose cover image"
+                  onChange={(event) =>
+                    setCoverFile(event.target.files?.[0] ?? undefined)
+                  }
+                />
+                <div className="form-image-upload-row">
                   <button
                     type="button"
-                    className="secondary-button"
-                    onClick={handleRemoveCover}
+                    className="upload-button form-image-upload-button"
+                    onClick={() => coverInputRef.current?.click()}
                   >
-                    Remove
+                    {coverFile
+                      ? coverFile.name
+                      : playlist.imageId
+                        ? "Change image"
+                        : "Choose image"}
                   </button>
-                )}
+                  {hasCover && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleRemoveCover}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="form-image-upload">
-              <span className="form-image-upload-label">Banner image</span>
-              <p className="settings-description">
-                Shown in the sidebar next to this playlist.
-              </p>
-              <input
-                ref={bannerInputRef}
-                type="file"
-                accept="image/*"
-                className="form-image-upload-input"
-                aria-label="Choose banner image"
-                onChange={(event) =>
-                  setBannerFile(event.target.files?.[0] ?? undefined)
-                }
-              />
-              <div className="form-image-upload-row">
-                <button
-                  type="button"
-                  className="upload-button form-image-upload-button"
-                  onClick={() => bannerInputRef.current?.click()}
-                >
-                  {bannerFile
-                    ? bannerFile.name
-                    : playlist.bannerImageId
-                      ? "Change banner"
-                      : "Choose image"}
-                </button>
-                {hasBanner && (
+              <div className="form-image-upload" style={{ flex: 1 }}>
+                <span className="form-image-upload-label">Banner image</span>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="form-image-upload-input"
+                  aria-label="Choose banner image"
+                  onChange={(event) =>
+                    setBannerFile(event.target.files?.[0] ?? undefined)
+                  }
+                />
+                <div className="form-image-upload-row">
                   <button
                     type="button"
-                    className="secondary-button"
-                    onClick={handleRemoveBanner}
+                    className="upload-button form-image-upload-button"
+                    onClick={() => bannerInputRef.current?.click()}
                   >
-                    Remove
+                    {bannerFile
+                      ? bannerFile.name
+                      : playlist.bannerImageId
+                        ? "Change banner"
+                        : "Choose image"}
                   </button>
-                )}
+                  {hasBanner && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleRemoveBanner}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="settings-section">
-            <h4 className="settings-section-title">Organization</h4>
-            {folders.length > 0 && (
-              <label>
-                Folder
-                <FolderSelect value={folderId} onChange={setFolderId} />
-              </label>
+          <section className="settings-section settings-section-collapsible">
+            <button
+              type="button"
+              className="settings-collapse-trigger"
+              onClick={() => setInfoExpanded(!infoExpanded)}
+              aria-expanded={infoExpanded}
+            >
+              <h4 className="settings-section-title">Organization</h4>
+              <span className="settings-collapse-icon" aria-hidden>
+                {infoExpanded ? "−" : "+"}
+              </span>
+            </button>
+            {infoExpanded && folders.length > 0 && (
+              <div className="settings-collapse-content">
+                <label>
+                  Folder
+                  <FolderSelect value={folderId} onChange={setFolderId} />
+                </label>
+              </div>
             )}
           </section>
 
@@ -252,6 +281,71 @@ export const EditPlaylistModal = ({
               >
                 <span className="custom-checkbox-box" aria-hidden>
                   {pinned ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : null}
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <div className="settings-section-title-row">
+              <h4 className="settings-section-title">Watchlist</h4>
+              <span
+                className="settings-info-icon"
+                onMouseEnter={() => setWatchInfoHover(true)}
+                onMouseLeave={() => setWatchInfoHover(false)}
+                aria-label="Watchlist info"
+              >
+                i
+                {watchInfoHover && (
+                  <div className="settings-info-tooltip" role="tooltip">
+                    <p className="settings-info-body">
+                      When enabled, new audio files added to the watched folder are automatically imported and added to this playlist.
+                    </p>
+                  </div>
+                )}
+              </span>
+            </div>
+            <label>
+              Folder path
+              <div className="settings-row" style={{ gap: 10 }}>
+                <input
+                  value={watchPath}
+                  onChange={(e) => setWatchPath(e.target.value)}
+                  placeholder="C:\\Music\\New"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={async () => {
+                    const api = window.electronAPI;
+                    if (!api?.pickDirectory) return;
+                    const picked = await api.pickDirectory(watchPath || undefined);
+                    if (picked) setWatchPath(picked);
+                  }}
+                  title={window.electronAPI?.pickDirectory ? "Browse" : "Browse is available in the desktop app"}
+                  disabled={!window.electronAPI?.pickDirectory}
+                >
+                  Browse
+                </button>
+              </div>
+            </label>
+            <div className="settings-row">
+              <span className="settings-row-label">Enable watchlist</span>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={watchEnabled}
+                className={`custom-checkbox ${watchEnabled ? "custom-checkbox--checked" : ""}`}
+                onClick={() => setWatchEnabled(!watchEnabled)}
+                aria-label="Enable watchlist"
+              >
+                <span className="custom-checkbox-box" aria-hidden>
+                  {watchEnabled ? (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>

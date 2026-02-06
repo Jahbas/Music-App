@@ -37,6 +37,8 @@ type PlaylistState = {
       pinned?: boolean;
       order?: number | null;
       folderId?: string | null;
+      watchEnabled?: boolean;
+      watchPath?: string;
     }
   ) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
@@ -157,7 +159,7 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
   },
   updatePlaylist: async (
     playlistId,
-    { name, description, color, bannerImageId, pinned, order, folderId }
+    { name, description, color, bannerImageId, pinned, order, folderId, watchEnabled, watchPath }
   ) => {
     const resolvedOrder =
       order === null ? undefined : order !== undefined ? order : undefined;
@@ -175,6 +177,8 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
         ...(pinned !== undefined && { pinned }),
         ...(hasOrder && { order: resolvedOrder }),
         ...(folderId !== undefined && { folderId: folderId === null ? undefined : folderId }),
+        ...(watchEnabled !== undefined && { watchEnabled }),
+        ...(watchPath !== undefined && { watchPath }),
         updatedAt: Date.now(),
       };
     });

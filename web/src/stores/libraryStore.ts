@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { imageDb, trackDb } from "../db/db";
 import type { Track } from "../types";
 import { fileToTrack, isSupportedAudioFile } from "../utils/track";
+import { useProfileLikesStore } from "./profileLikesStore";
 
 export type AddProgress = {
   total: number;
@@ -15,6 +16,8 @@ type LibraryState = {
   addProgress: AddProgress | null;
   hydrate: () => Promise<void>;
   addFiles: (files: FileList | File[]) => Promise<string[]>;
+  /** Desktop-only: import files by absolute filesystem paths. */
+  addFilePaths: (paths: string[]) => Promise<string[]>;
   addFileHandles: (handles: FileSystemFileHandle[]) => Promise<string[]>;
   removeTrack: (id: string) => Promise<void>;
   clearLibrary: () => Promise<void>;
@@ -130,6 +133,107 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ addProgress: null });
     }
   },
+  addFilePaths: async (paths) => {
+    const list = Array.from(paths).filter(Boolean);
+    const api = (window as any).electronAPI as {
+      readFileFromPath?: (p: string) => Promise<{ name: string; mimeType: string; data: ArrayBuffer; hash: string }>;
+    } | undefined;
+    if (!api?.readFileFromPath || list.length === 0) {
+      return [];
+    }
+
+    const existingTracks = get().tracks as any[];
+    const existingPaths = new Set(
+      existingTracks.map((t) => t.sourcePath as string | undefined).filter(Boolean)
+    );
+    const existingHashes = new Set(
+      existingTracks.map((t) => t.sourceHash as string | undefined).filter(Boolean)
+    );
+
+    const newTracks: Track[] = [];
+    set({
+      addProgress: {
+        total: list.length,
+        loaded: 0,
+        startedAt: Date.now(),
+      },
+    });
+    const updateProgress = (loaded: number) => {
+      set((state) =>
+        state.addProgress
+          ? {
+              addProgress: {
+                ...state.addProgress,
+                loaded,
+              },
+            }
+          : state
+      );
+    };
+
+    try {
+      for (let i = 0; i < list.length; i++) {
+        const filePath = list[i];
+        if (existingPaths.has(filePath)) {
+          updateProgress(i + 1);
+          await new Promise((r) => setTimeout(r, 0));
+          continue;
+        }
+
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const payload = await api.readFileFromPath(filePath);
+          if (payload.hash && existingHashes.has(payload.hash)) {
+            existingPaths.add(filePath);
+            updateProgress(i + 1);
+            await new Promise((r) => setTimeout(r, 0));
+            continue;
+          }
+          const blob = new Blob([payload.data], { type: payload.mimeType || "application/octet-stream" });
+          const file = new File([blob], payload.name, { type: payload.mimeType || "" });
+
+          if (!isSupportedAudioFile(file)) {
+            updateProgress(i + 1);
+            await new Promise((r) => setTimeout(r, 0));
+            continue;
+          }
+
+          // eslint-disable-next-line no-await-in-loop
+          const { track, artworkBlob } = await fileToTrack(file, "blob");
+          (track as any).sourcePath = filePath;
+          (track as any).sourceHash = payload.hash;
+
+          if (artworkBlob) {
+            const artworkId = crypto.randomUUID();
+            // eslint-disable-next-line no-await-in-loop
+            const compressed = await compressArtwork(artworkBlob);
+            // eslint-disable-next-line no-await-in-loop
+            await imageDb.put(artworkId, compressed);
+            track.artworkId = artworkId;
+          }
+
+          newTracks.push(track);
+          existingPaths.add(filePath);
+          if (payload.hash) existingHashes.add(payload.hash);
+        } catch {
+          // ignore unreadable files
+        }
+
+        updateProgress(i + 1);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      if (newTracks.length > 0) {
+        await trackDb.putMany(newTracks);
+        const lightTracks = newTracks.map(stripFileBlob);
+        set({ tracks: [...get().tracks, ...lightTracks] });
+      }
+
+      return newTracks.map((t) => t.id);
+    } finally {
+      set({ addProgress: null });
+    }
+  },
   addFileHandles: async (handles) => {
     const list = Array.from(handles);
     const newTracks: Track[] = [];
@@ -195,9 +299,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ tracks: [] });
   },
   toggleTrackLiked: async (id) => {
-    const { toggle } = await import("./profileLikesStore").then((m) =>
-      m.useProfileLikesStore.getState()
-    );
+    const { toggle } = useProfileLikesStore.getState();
     await toggle(id);
   },
   setTrackTags: async (id, tags) => {

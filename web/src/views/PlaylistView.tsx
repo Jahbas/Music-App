@@ -23,6 +23,7 @@ export const PlaylistView = () => {
   );
   const tracks = useLibraryStore((state) => state.tracks);
   const addFiles = useLibraryStore((state) => state.addFiles);
+  const addFilePaths = useLibraryStore((state) => state.addFilePaths);
   const toggleTrackLiked = useLibraryStore((state) => state.toggleTrackLiked);
   const likedTrackIds = useProfileLikesStore((state) => state.likedTrackIds);
   const playTrack = usePlayerStore((state) => state.playTrack);
@@ -109,6 +110,16 @@ export const PlaylistView = () => {
     [playlist, removeTrackFromPlaylist]
   );
 
+  const handleRemoveFromPlaylist = useCallback(
+    async (trackIds: string[]) => {
+      if (!playlist) return;
+      for (const trackId of trackIds) {
+        await removeTrackFromPlaylist(playlist.id, trackId);
+      }
+    },
+    [playlist, removeTrackFromPlaylist]
+  );
+
   const hasFileTypes = useCallback((dataTransfer: DataTransfer) => {
     return dataTransfer.types.includes("Files");
   }, []);
@@ -143,6 +154,59 @@ export const PlaylistView = () => {
     },
     [playlist, hasFileTypes, addFiles, addTracksToPlaylist]
   );
+
+  const handleRescanWatchlist = useCallback(async () => {
+    if (!playlist || !playlist.watchPath) return;
+    const api = window.electronAPI;
+    if (!api?.listAudioPaths) return;
+
+    const basePath = playlist.watchPath;
+    const allPaths = await api.listAudioPaths(basePath);
+    if (!allPaths) return;
+
+    // Normalize to a set for quick lookup.
+    const pathSet = new Set(allPaths);
+
+    // Map of trackId -> track with sourcePath, to find which ones belong to this folder.
+    const trackById = new Map(tracks.map((t) => [t.id, t as any]));
+
+    const keepIds: string[] = [];
+    const removableFromThisPlaylist: string[] = [];
+
+    for (const trackId of playlist.trackIds) {
+      const t = trackById.get(trackId);
+      const sourcePath: string | undefined = t?.sourcePath;
+      if (!sourcePath || !sourcePath.startsWith(basePath)) {
+        // Track either predates watchlist or is not under this folder; keep it.
+        keepIds.push(trackId);
+        continue;
+      }
+      if (pathSet.has(sourcePath)) {
+        keepIds.push(trackId);
+      } else {
+        removableFromThisPlaylist.push(trackId);
+      }
+    }
+
+    // Remove missing tracks from this playlist.
+    for (const trackId of removableFromThisPlaylist) {
+      // eslint-disable-next-line no-await-in-loop
+      await removeTrackFromPlaylist(playlist.id, trackId);
+    }
+
+    // Add new files that aren't already referenced by any track with that sourcePath.
+    const existingPaths = new Set(
+      tracks.map((t) => (t as any).sourcePath as string | undefined).filter(Boolean)
+    );
+    const newPaths = allPaths.filter((p) => !existingPaths.has(p));
+
+    if (newPaths.length > 0) {
+      const newTrackIds = await addFilePaths(newPaths);
+      if (newTrackIds.length > 0) {
+        await addTracksToPlaylist(playlist.id, newTrackIds);
+      }
+    }
+  }, [playlist, tracks, addFilePaths, addTracksToPlaylist, removeTrackFromPlaylist]);
 
   if (!playlist) {
     return <div className="empty-state">Playlist not found.</div>;
@@ -186,6 +250,25 @@ export const PlaylistView = () => {
             >
               <ShuffleIcon />
             </button>
+            {playlist.watchEnabled && playlist.watchPath && (
+              <button
+                type="button"
+                className="ghost-button playlist-header-rescan"
+                onClick={async (e) => {
+                  const btn = e.currentTarget;
+                  btn.classList.remove("playlist-header-rescan--spinning");
+                  // Force reflow so the animation can restart
+                  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+                  btn.offsetHeight;
+                  btn.classList.add("playlist-header-rescan--spinning");
+                  await handleRescanWatchlist();
+                }}
+                title="Rescan watched folder for changes"
+                aria-label="Rescan watched folder for changes"
+              >
+                <RefreshIcon />
+              </button>
+            )}
             <button
               type="button"
               className="primary-button playlist-header-play"
@@ -214,6 +297,7 @@ export const PlaylistView = () => {
         highlightTrackId={highlightTrackId}
         onToggleLike={toggleTrackLiked}
         likedTrackIds={likedTrackIds}
+        onRemoveFromPlaylist={handleRemoveFromPlaylist}
       />
     </div>
   );
@@ -235,6 +319,15 @@ function PlayIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M8 5v14l11-7L8 5z" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="3 2 3 8 9 8" />
+      <path d="M3.51 13a9 9 0 1 0 .49-5H3" />
     </svg>
   );
 }
