@@ -18,6 +18,7 @@ Thumbs.db
 *.swo
 .vscode/
 .idea/
+.cursor/
 
 # Environment / local config
 .env
