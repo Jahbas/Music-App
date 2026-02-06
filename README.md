@@ -1,5 +1,5 @@
 # Music App
-# Current release not working wait for version 1.4.1hotfix (currently working on it.)
+# I think it should be working if the exe installer isn't working just build from source I will soon give a hotfix I currently have a fix but I ship with the new planned feature.
 A fast, local‑first desktop music player built on the open source [Music](https://github.com/Jahbas/Music) project.
 
 Because everything runs locally and there is no heavy streaming client around it, **Music App typically uses noticeably less memory than big streaming apps like Spotify or Apple Music**, especially once your library is indexed and playing offline files.
