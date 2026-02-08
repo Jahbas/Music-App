@@ -136,19 +136,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
   addFilePaths: async (paths) => {
     const list = Array.from(paths).filter(Boolean);
-    const api = (window as any).electronAPI as {
-      readFileFromPath?: (p: string) => Promise<{ name: string; mimeType: string; data: ArrayBuffer; hash: string }>;
-    } | undefined;
-    if (!api?.readFileFromPath || list.length === 0) {
+    const api = (window as Window & { electronAPI?: { parseMetadataFromPath?: (p: string) => Promise<{
+      title: string;
+      artist: string;
+      album: string;
+      duration: number;
+      year?: number;
+      artworkData?: ArrayBuffer;
+      artworkMime?: string;
+      hash: string;
+    } | null> } }).electronAPI;
+    if (!api?.parseMetadataFromPath || list.length === 0) {
       return [];
     }
 
-    const existingTracks = get().tracks as any[];
+    const existingTracks = get().tracks;
     const existingPaths = new Set(
-      existingTracks.map((t) => t.sourcePath as string | undefined).filter(Boolean)
+      existingTracks.map((t) => t.sourcePath).filter(Boolean) as string[]
     );
     const existingHashes = new Set(
-      existingTracks.map((t) => t.sourceHash as string | undefined).filter(Boolean)
+      existingTracks.map((t) => t.sourceHash).filter(Boolean) as string[]
     );
 
     const newTracks: Track[] = [];
@@ -182,33 +189,36 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         }
 
         try {
-          // eslint-disable-next-line no-await-in-loop
-          const payload = await api.readFileFromPath(filePath);
+          const payload = await api.parseMetadataFromPath(filePath);
+          if (!payload) continue;
           if (payload.hash && existingHashes.has(payload.hash)) {
             existingPaths.add(filePath);
-            updateProgress(i + 1);
-            await new Promise((r) => setTimeout(r, 0));
-            continue;
-          }
-          const blob = new Blob([payload.data], { type: payload.mimeType || "application/octet-stream" });
-          const file = new File([blob], payload.name, { type: payload.mimeType || "" });
-
-          if (!isSupportedAudioFile(file)) {
+            existingHashes.add(payload.hash);
             updateProgress(i + 1);
             await new Promise((r) => setTimeout(r, 0));
             continue;
           }
 
-          // eslint-disable-next-line no-await-in-loop
-          const { track, artworkBlob } = await fileToTrack(file, "blob");
-          (track as any).sourcePath = filePath;
-          (track as any).sourceHash = payload.hash;
+          const track: Track = {
+            id: crypto.randomUUID(),
+            title: payload.title,
+            artist: payload.artist,
+            album: payload.album,
+            duration: payload.duration,
+            addedAt: Date.now(),
+            year: payload.year,
+            sourceType: "path",
+            sourcePath: filePath,
+            sourceHash: payload.hash,
+            liked: false,
+          };
 
-          if (artworkBlob) {
+          if (payload.artworkData && payload.artworkData.byteLength > 0) {
+            const artworkBlob = new Blob([payload.artworkData], {
+              type: payload.artworkMime || "image/jpeg",
+            });
             const artworkId = crypto.randomUUID();
-            // eslint-disable-next-line no-await-in-loop
             const compressed = await compressArtwork(artworkBlob);
-            // eslint-disable-next-line no-await-in-loop
             await imageDb.put(artworkId, compressed);
             track.artworkId = artworkId;
           }

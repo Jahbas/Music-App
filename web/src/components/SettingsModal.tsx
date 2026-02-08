@@ -12,7 +12,7 @@ import { useAudioSettingsStore } from "../stores/audioSettingsStore";
 import type { EqPresetId } from "../stores/audioSettingsStore";
 import { EqAdvancedGraph } from "./EqAdvancedGraph";
 import { exportSettingsToJson, importSettingsFromJson } from "../utils/settingsBackup";
-import { trackDb, playlistDb, imageDb, playHistoryDb, themeDb, profileDb, profileLikesDb, artistCacheDb, audioBlobDb, sharedTrackDb } from "../db/db";
+import { trackDb, playlistDb, folderDb, imageDb, playHistoryDb, themeDb, profileDb, profileLikesDb, artistCacheDb, audioBlobDb, sharedTrackDb } from "../db/db";
 import {
   getExpandPlaylistsOnFolderPlay,
   setExpandPlaylistsOnFolderPlay,
@@ -22,6 +22,8 @@ import {
   setTelemetryEnabled,
   getArtistDataPersistent,
   setArtistDataPersistent,
+  getMinimizeToTray,
+  setMinimizeToTray,
 } from "../utils/preferences";
 import { useArtistStore } from "../stores/artistStore";
 import { ColorPicker } from "./ColorPicker";
@@ -38,6 +40,30 @@ function getOledUnlocked(): boolean {
   } catch {
     return false;
   }
+}
+
+type SettingsSwitchProps = {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  title?: string;
+  "aria-label"?: string;
+};
+
+function SettingsSwitch({ checked, onChange, title, "aria-label": ariaLabel }: SettingsSwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel ?? (checked ? "On" : "Off")}
+      title={title}
+      className={`settings-switch ${checked ? "settings-switch--on" : ""}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="settings-switch-fill" aria-hidden />
+      <span className="settings-switch-thumb" aria-hidden />
+    </button>
+  );
 }
 
 type SettingsModalProps = {
@@ -82,6 +108,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [darkTapCount, setDarkTapCount] = useState(0);
   const [expandPlaylistsOnFolderPlay, setExpandPlaylistsOnFolderPlayState] = useState(true);
   const [autoPlayOnLoad, setAutoPlayOnLoadState] = useState(true);
+  const [runOnStartup, setRunOnStartupState] = useState(false);
+  const [minimizeToTray, setMinimizeToTrayState] = useState(false);
   const [telemetryEnabled, setTelemetryEnabledState] = useState(false);
   const [isImportingSettings, setIsImportingSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -127,6 +155,12 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     setExpandPlaylistsOnFolderPlayState(getExpandPlaylistsOnFolderPlay());
     setAutoPlayOnLoadState(getAutoPlayOnLoad());
     setTelemetryEnabledState(getTelemetryEnabled());
+    setMinimizeToTrayState(getMinimizeToTray());
+    const loadRunOnStartup = async () => {
+      const open = await window.electronAPI?.getRunOnStartup?.();
+      if (typeof open === "boolean") setRunOnStartupState(open);
+    };
+    void loadRunOnStartup();
     setArtistDataPersistentState(getArtistDataPersistent());
     setConfirmClearArtistData(false);
     const getStorageUsage = async () => {
@@ -211,7 +245,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     }
     try {
       await trackDb.clear();
-      // Keep playlists and folders; only clear song-related data
+      await playlistDb.clear();
+      await folderDb.clear();
       await imageDb.clear();
       await playHistoryDb.clear();
       await profileLikesDb.clear();
@@ -225,7 +260,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       await usePlayHistoryStore.getState().hydrate();
       await useProfileLikesStore.getState().hydrate();
       usePlayerStore.getState().clearQueue();
-      // Theme, profiles, playlists, and folders are not cleared.
+      // Theme and profiles are not cleared.
     } finally {
       setConfirmDeleteAllSongs(false);
       onClose();
@@ -307,69 +342,60 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const renderGeneralTab = () => (
     <div className="settings-sections">
       <section className="settings-section">
-        <h4 className="settings-section-title">Features</h4>
+        <h4 className="settings-section-title">App</h4>
+        {typeof window.electronAPI?.getRunOnStartup === "function" && (
+          <div className="settings-row">
+            <span className="settings-row-label">Run on startup</span>
+            <SettingsSwitch
+              checked={runOnStartup}
+              onChange={async (next) => {
+                await window.electronAPI?.setRunOnStartup?.(next);
+                setRunOnStartupState(next);
+              }}
+              title="Start Music when you log in"
+            />
+          </div>
+        )}
+        {typeof window.electronAPI?.setMinimizeToTray === "function" && (
+          <div className="settings-row">
+            <span className="settings-row-label">Minimize to tray on close</span>
+            <SettingsSwitch
+              checked={minimizeToTray}
+              onChange={(next) => {
+                setMinimizeToTray(next);
+                setMinimizeToTrayState(next);
+                window.electronAPI?.setMinimizeToTray?.(next);
+              }}
+              title="Hide to tray instead of quitting"
+            />
+          </div>
+        )}
         <div className="settings-row">
           <span className="settings-row-label">Your Wrapped</span>
           <button
             type="button"
             className="secondary-button settings-row-action"
             onClick={handleOpenWrapped}
+            title="Yearly listening stats"
           >
             Open
           </button>
         </div>
-        <p className="settings-description">See your yearly listening stats.</p>
-        <div className="settings-row">
-          <span className="settings-row-label">Session & usage telemetry</span>
-          <button
-            type="button"
-            className={`${telemetryEnabled ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => {
-              const next = !telemetryEnabled;
-              setTelemetryEnabled(next);
-              setTelemetryEnabledState(next);
-            }}
-            aria-pressed={telemetryEnabled}
-          >
-            {telemetryEnabled ? "On" : "Off"}
-          </button>
-        </div>
-        <p className="settings-description">
-          Records visits, listening time, pages, searches, and player actions. Data stays on your device.
-        </p>
-        <div className="settings-row">
-          <span className="settings-row-label">Telemetry details</span>
-          <button
-            type="button"
-            className="secondary-button settings-row-action"
-            onClick={handleOpenTelemetry}
-          >
-            Open
-          </button>
-        </div>
-        <p className="settings-description">Inspect local-only usage analytics and export telemetry as JSON.</p>
       </section>
 
       <section className="settings-section">
-        <h4 className="settings-section-title">Folders</h4>
+        <h4 className="settings-section-title">Library</h4>
         <div className="settings-row">
-          <span className="settings-row-label">Expand all playlists when playing folder</span>
-          <button
-            type="button"
-            className={`${expandPlaylistsOnFolderPlay ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => {
-              const next = !expandPlaylistsOnFolderPlay;
+          <span className="settings-row-label">Expand playlists when playing folder</span>
+          <SettingsSwitch
+            checked={expandPlaylistsOnFolderPlay}
+            onChange={(next) => {
               setExpandPlaylistsOnFolderPlayState(next);
               setExpandPlaylistsOnFolderPlay(next);
             }}
-            aria-pressed={expandPlaylistsOnFolderPlay}
-          >
-            {expandPlaylistsOnFolderPlay ? "On" : "Off"}
-          </button>
+            title="Play on folder expands all playlists inside"
+          />
         </div>
-        <p className="settings-description">
-          When on, Play on a folder expands every playlist inside it.
-        </p>
       </section>
     </div>
   );
@@ -385,7 +411,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               {oledUnlocked && (
                 <button
                   type="button"
-                  className={mode === "oled" ? "primary-button" : "secondary-button"}
+                  className={`${mode === "oled" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
                   onClick={() => setMode("oled")}
                 >
                   OLED
@@ -393,7 +419,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               )}
               <button
                 type="button"
-                className={mode === "dark" ? "primary-button" : "secondary-button"}
+                className={`${mode === "dark" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
                 onClick={() => {
                   setMode("dark");
                   const next = darkTapCount + 1;
@@ -412,7 +438,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               </button>
               <button
                 type="button"
-                className={mode === "light" ? "primary-button" : "secondary-button"}
+                className={`${mode === "light" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
                 onClick={() => setMode("light")}
               >
                 Light
@@ -420,7 +446,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </div>
             {!oledUnlocked && darkTapCount >= OLED_HINT_AFTER_TAPS && darkTapCount < OLED_UNLOCK_TAPS && (
               <span className="settings-oled-hint">
-                {OLED_UNLOCK_TAPS - darkTapCount} more to unlock OLED mode
+                {OLED_UNLOCK_TAPS - darkTapCount} more to unlock OLED
               </span>
             )}
           </div>
@@ -442,41 +468,32 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           <div className="settings-theme-toggle">
             <button
               type="button"
-              className={density === "cozy" ? "primary-button" : "secondary-button"}
+              className={`${density === "cozy" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
               onClick={() => setDensity("cozy")}
             >
               Cozy
             </button>
             <button
               type="button"
-              className={density === "compact" ? "primary-button" : "secondary-button"}
+              className={`${density === "compact" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
               onClick={() => setDensity("compact")}
             >
               Compact
             </button>
           </div>
         </div>
-        <p className="settings-description">
-          Compact mode tightens paddings and row heights so you can see more tracks at once.
-        </p>
       </section>
 
       <section className="settings-section">
         <h4 className="settings-section-title">Motion</h4>
         <div className="settings-row">
           <span className="settings-row-label">Reduce motion</span>
-          <button
-            type="button"
-            className={`${motion === "reduced" ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => setMotion(motion === "reduced" ? "normal" : "reduced")}
-            aria-pressed={motion === "reduced"}
-          >
-            {motion === "reduced" ? "On" : "Off"}
-          </button>
+          <SettingsSwitch
+            checked={motion === "reduced"}
+            onChange={(on) => setMotion(on ? "reduced" : "normal")}
+            aria-label="Reduce motion"
+          />
         </div>
-        <p className="settings-description">
-          When on, most animations and transitions are minimized.
-        </p>
       </section>
     </div>
   );
@@ -485,11 +502,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     <div className="settings-sections">
       <section className="settings-section">
         <h4 className="settings-section-title">Profiles</h4>
-        <p className="settings-description">
-          Profiles capture theme, audio, player, and behavior settings so you can switch between setups quickly.
-        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Save current as profile</span>
+          <span className="settings-row-label">Save current setup</span>
           <button
             type="button"
             className="secondary-button settings-row-action"
@@ -497,6 +511,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               setNewThemeProfileName("");
               setIsSavingThemeProfile(true);
             }}
+            title="Theme, audio, player & preferences"
           >
             Save
           </button>
@@ -552,10 +567,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
       {profiles.length > 0 && (
         <section className="settings-section">
-          <h4 className="settings-section-title">Saved profiles</h4>
-          <p className="settings-description">
-            Apply a profile to switch theme, audio, player, and behavior settings in one step.
-          </p>
+          <h4 className="settings-section-title">Saved</h4>
           <div className="settings-theme-profiles-list">
             {profiles.map((profile) => (
               <div key={(profile as any).name ?? profile.mode} className="settings-row">
@@ -565,16 +577,16 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 <div className="settings-theme-toggle">
                   <button
                     type="button"
-                    className="secondary-button"
+                    className="secondary-button settings-toggle-btn"
                     onClick={() => applyThemeProfile((profile as any).name ?? "")}
                   >
                     Apply
                   </button>
                   <button
                     type="button"
-                    className="ghost-button"
+                    className="ghost-button settings-row-action settings-row-action-icon"
                     onClick={() => deleteThemeProfile((profile as any).name ?? "")}
-                    aria-label={`Delete profile ${(profile as any).name ?? ""}`}
+                    aria-label={`Delete ${(profile as any).name ?? ""}`}
                   >
                     ✕
                   </button>
@@ -596,27 +608,18 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             Crossfade
             <span
               className="settings-experimental-icon"
-              title="Experimental feature. If something sounds wrong or stops working, please report it on GitHub."
-              aria-label="Crossfade is experimental. Please report issues on GitHub."
+              title="Experimental. Report issues on GitHub."
+              aria-label="Experimental"
             >
               !
             </span>
           </span>
-          <button
-            type="button"
-            className={crossfadeEnabled ? "primary-button" : "secondary-button"}
-            onClick={() => setCrossfadeEnabled(!crossfadeEnabled)}
-            aria-pressed={crossfadeEnabled}
-          >
-            {crossfadeEnabled ? "On" : "Off"}
-          </button>
+          <SettingsSwitch
+            checked={crossfadeEnabled}
+            onChange={setCrossfadeEnabled}
+            aria-label="Crossfade"
+          />
         </div>
-        <p className="settings-description">
-          Smoothly overlap the end of one track with the start of the next.
-        </p>
-        <p className="settings-description">
-          Crossfade is experimental. If something sounds wrong or stops working, feedback is very welcome on GitHub.
-        </p>
         <div className="settings-row settings-row-slider">
           <span className="settings-row-label">Crossfade length</span>
           <div className="settings-slider-wrap" style={{ ["--settings-crossfade-fill" as string]: `${(crossfadeMs / 12000) * 100}%` }}>
@@ -628,7 +631,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               step={500}
               value={crossfadeMs}
               onChange={(event) => setCrossfadeMs(Number(event.target.value))}
-              aria-label="Crossfade duration in milliseconds"
+              aria-label="Crossfade duration"
             />
             <span className="settings-slider-value">
               {crossfadeMs === 0 ? "Off" : `${(crossfadeMs / 1000).toFixed(1)} s`}
@@ -636,33 +639,24 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           </div>
         </div>
         <div className="settings-row">
-          <span className="settings-row-label">Gapless playback</span>
-          <button
-            type="button"
-            className={gaplessEnabled ? "primary-button" : "secondary-button"}
-            onClick={() => setGaplessEnabled(!gaplessEnabled)}
-            aria-pressed={gaplessEnabled}
-          >
-            {gaplessEnabled ? "On" : "Off"}
-          </button>
+          <span className="settings-row-label">Gapless</span>
+          <SettingsSwitch
+            checked={gaplessEnabled}
+            onChange={setGaplessEnabled}
+            title="Minimize gaps between tracks"
+          />
         </div>
-        <p className="settings-description">
-          Best-effort to minimize gaps between tracks. Exact behavior may vary by file and device.
-        </p>
       </section>
 
       <section className="settings-section">
         <h4 className="settings-section-title">Equalizer</h4>
         <div className="settings-row">
           <span className="settings-row-label">EQ</span>
-          <button
-            type="button"
-            className={`${eqEnabled ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => setEqEnabled(!eqEnabled)}
-            aria-pressed={eqEnabled}
-          >
-            {eqEnabled ? "On" : "Off"}
-          </button>
+          <SettingsSwitch
+            checked={eqEnabled}
+            onChange={setEqEnabled}
+            aria-label="Equalizer"
+          />
         </div>
         <div className="settings-row">
           <span className="settings-row-label">Preset</span>
@@ -718,11 +712,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </div>
           </div>
         </div>
-        <p className="settings-description">
-          Presets are applied per device and work best with the crossfade audio engine.
-        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Advanced controls</span>
+          <span className="settings-row-label">Advanced</span>
           <button
             type="button"
             className={`${showAdvancedEq ? "primary-button" : "secondary-button"} settings-row-action`}
@@ -748,13 +739,39 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const renderDataTab = () => (
     <div className="settings-sections">
       <section className="settings-section">
+        <h4 className="settings-section-title">Privacy</h4>
+        <div className="settings-row">
+          <span className="settings-row-label">Usage telemetry</span>
+          <SettingsSwitch
+            checked={telemetryEnabled}
+            onChange={(next) => {
+              setTelemetryEnabled(next);
+              setTelemetryEnabledState(next);
+            }}
+            title="Local-only: visits, listening, searches. Stays on device."
+          />
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">Telemetry details</span>
+          <button
+            type="button"
+            className="secondary-button settings-row-action"
+            onClick={handleOpenTelemetry}
+            title="View and export analytics"
+          >
+            Open
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
         <div className="settings-section-title-row">
-          <h4 className="settings-section-title">Data</h4>
+          <h4 className="settings-section-title">Storage</h4>
           <span
             className="settings-info-icon"
             onMouseEnter={() => setDataInfoHover(true)}
             onMouseLeave={() => setDataInfoHover(false)}
-            aria-label="Data storage info"
+            aria-label="Storage info"
           >
             i
           </span>
@@ -766,23 +783,17 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             onMouseEnter={() => setDataInfoHover(true)}
             onMouseLeave={() => setDataInfoHover(false)}
           >
-            <p className="settings-info-title">How your data is stored</p>
+            <p className="settings-info-title">Local storage</p>
             <p className="settings-info-body">
-              All of your tracks, playlists, profiles, folders, images, play history, and settings are stored locally in this app on your device. Nothing is sent to any server or cloud. This is not browser storage—it stays with the app.
+              Tracks, playlists, profiles, history and settings are stored only on this device. Nothing is sent to any server.
             </p>
             {storageUsage != null && (
               <p className="settings-info-meta">
-                <span className="settings-info-meta-label">Current storage used:</span> {storageUsage}
+                <span className="settings-info-meta-label">Used:</span> {storageUsage}
               </p>
             )}
-            <p className="settings-info-footnote">
-              Clearing history or deleting data only affects this app on this device.
-            </p>
           </div>
         )}
-        <p className="settings-description">
-          Manage history and storage for this app.
-        </p>
         <div className="settings-row">
           <span className="settings-row-label">Export settings</span>
           <button
@@ -800,13 +811,11 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               document.body.removeChild(link);
               URL.revokeObjectURL(url);
             }}
+            title="Theme, audio, player, folders & playlists to JSON"
           >
-            Download JSON
+            Download
           </button>
         </div>
-        <p className="settings-description">
-          Saves theme, audio settings, player preferences, and library structure (folders and playlists) to a JSON file.
-        </p>
         <div className="settings-row">
           <span className="settings-row-label">Import settings</span>
           <button
@@ -819,6 +828,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 fileInputRef.current.click();
               }
             }}
+            title="From Music JSON backup (no tracks)"
           >
             Choose file
           </button>
@@ -845,84 +855,65 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             }
           }}
         />
-        <p className="settings-description">
-          Imports settings from a JSON file created by Music on this device. Tracks and audio files are not included.
-        </p>
-        <h4 className="settings-section-title" style={{ marginTop: "24px" }}>Artist data</h4>
-        <p className="settings-description">
-          Artist info and profile pictures are loaded from iTunes (images) and MusicBrainz (metadata). You can save them on this device or clear them.
-        </p>
+      </section>
+
+      <section className="settings-section">
+        <h4 className="settings-section-title">Artists</h4>
         <div className="settings-row">
           <span className="settings-row-label">Persist artist data</span>
-          <button
-            type="button"
-            className={`${artistDataPersistent ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => handleArtistDataPersistentChange(!artistDataPersistent)}
-            aria-pressed={artistDataPersistent}
-          >
-            {artistDataPersistent ? "On" : "Off"}
-          </button>
+          <SettingsSwitch
+            checked={artistDataPersistent}
+            onChange={handleArtistDataPersistentChange}
+            title="Save to device across restarts"
+          />
         </div>
-        <p className="settings-description">
-          When on, fetched artist data is saved to this device and survives restarts. When off, it is only kept in memory.
-        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Cached artist data</span>
+          <span className="settings-row-label">Clear artist cache</span>
           <button
             type="button"
             className={confirmClearArtistData ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
             onClick={handleClearArtistData}
           >
-            {confirmClearArtistData ? "Click again to clear" : "Clear cached artist data"}
+            {confirmClearArtistData ? "Click again" : "Clear"}
           </button>
         </div>
-        <p className="settings-description">
-          Removes all cached artist info and profile pictures. You can load them again from the Artists view.
-        </p>
-        <div className="modal-danger-zone">
-          <div className="settings-row">
-            <span className="settings-row-label">Play history</span>
-            <button
-              type="button"
-              className={confirmClearHistory ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
-              onClick={handleClearPlayHistory}
-            >
-              {confirmClearHistory ? "Click again to clear" : "Clear history"}
-            </button>
-          </div>
-          <p className="settings-description">
-            Removes all play history and resets Wrapped. This cannot be undone.
-          </p>
-          <div className="settings-row">
-            <span className="settings-row-label">Delete unused tracks</span>
-            <button
-              type="button"
-              className={confirmDeleteUnusedTracks ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
-              onClick={handleDeleteUnusedTracks}
-            >
-              {confirmDeleteUnusedTracks
-                ? lastUnusedDeleteCount != null && lastUnusedDeleteCount > 0
-                  ? `Click again to delete ${lastUnusedDeleteCount} track${lastUnusedDeleteCount === 1 ? "" : "s"}`
-                  : "Click again to delete"
-                : "Delete unused tracks"}
-            </button>
-          </div>
-          <p className="settings-description">
-            Removes tracks that are not in any playlist and not in the current queue. This cannot be undone.
-          </p>
-          <div className="settings-row">
-            <span className="settings-row-label">Delete all songs</span>
-            <button
-              type="button"
-              className={confirmDeleteAllSongs ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
-              onClick={handleDeleteAllSongs}
-            >
-              {confirmDeleteAllSongs ? "Click again to delete" : "Delete all songs"}
-            </button>
-          </div>
-          <p className="settings-description">
-            Removes all tracks, playlists, folders, images, play history, and artist cache. Theme and settings are kept. This cannot be undone.
-          </p>
+      </section>
+
+      <section className="settings-section modal-danger-zone">
+        <h4 className="settings-section-title">Danger zone</h4>
+        <div className="settings-row">
+          <span className="settings-row-label">Play history</span>
+          <button
+            type="button"
+            className={confirmClearHistory ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
+            onClick={handleClearPlayHistory}
+          >
+            {confirmClearHistory ? "Click again" : "Clear"}
+          </button>
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">Delete unused tracks</span>
+          <button
+            type="button"
+            className={confirmDeleteUnusedTracks ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
+            onClick={handleDeleteUnusedTracks}
+          >
+            {confirmDeleteUnusedTracks
+              ? lastUnusedDeleteCount != null && lastUnusedDeleteCount > 0
+                ? `Again: ${lastUnusedDeleteCount}`
+                : "Click again"
+              : "Delete"}
+          </button>
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">Delete all songs</span>
+          <button
+            type="button"
+            className={confirmDeleteAllSongs ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
+            onClick={handleDeleteAllSongs}
+          >
+            {confirmDeleteAllSongs ? "Click again" : "Delete all"}
+          </button>
         </div>
       </section>
     </div>
@@ -932,19 +923,16 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     <div className="settings-sections">
       <section className="settings-section">
         <h4 className="settings-section-title">Support</h4>
-        <p className="settings-description">
-          Support the project for free!
-        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Source / repo</span>
+          <span className="settings-row-label">Repository</span>
           <button
             type="button"
             className="secondary-button settings-row-action support-rainbow-button"
             onClick={handleOpenGitHubElectronRepo}
             title={GITHUB_ELECTRON_REPO_URL}
-            aria-label="Open the app repository"
+            aria-label="Open repository"
           >
-            Open repository
+            Open
           </button>
         </div>
       </section>
@@ -954,68 +942,52 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const renderPlayerTab = () => (
     <div className="settings-sections">
       <section className="settings-section">
-        <h4 className="settings-section-title">Playback behavior</h4>
+        <h4 className="settings-section-title">Defaults</h4>
         <div className="settings-row">
-          <span className="settings-row-label">Default shuffle</span>
-          <button
-            type="button"
-            className={`${shuffle ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => setShuffle(!shuffle)}
-            aria-pressed={shuffle}
-          >
-            {shuffle ? "On" : "Off"}
-          </button>
+          <span className="settings-row-label">Shuffle</span>
+          <SettingsSwitch
+            checked={shuffle}
+            onChange={setShuffle}
+            title="New queues start shuffled"
+          />
         </div>
-        <p className="settings-description">
-          Controls whether new queues start in shuffle mode by default.
-        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Default repeat mode</span>
+          <span className="settings-row-label">Repeat</span>
           <div className="settings-theme-toggle">
             <button
               type="button"
-              className={repeat === "off" ? "primary-button" : "secondary-button"}
+              className={`${repeat === "off" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
               onClick={() => setRepeat("off")}
             >
               Off
             </button>
             <button
               type="button"
-              className={repeat === "queue" ? "primary-button" : "secondary-button"}
+              className={`${repeat === "queue" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
               onClick={() => setRepeat("queue")}
             >
               Queue
             </button>
             <button
               type="button"
-              className={repeat === "track" ? "primary-button" : "secondary-button"}
+              className={`${repeat === "track" ? "primary-button" : "secondary-button"} settings-toggle-btn`}
               onClick={() => setRepeat("track")}
             >
               Track
             </button>
           </div>
         </div>
-        <p className="settings-description">
-          New listening sessions use this repeat mode unless you change it in the player.
-        </p>
         <div className="settings-row">
-          <span className="settings-row-label">Resume playback on app load</span>
-          <button
-            type="button"
-            className={`${autoPlayOnLoad ? "primary-button" : "secondary-button"} settings-row-action`}
-            onClick={() => {
-              const next = !autoPlayOnLoad;
+          <span className="settings-row-label">Resume on load</span>
+          <SettingsSwitch
+            checked={autoPlayOnLoad}
+            onChange={(next) => {
               setAutoPlayOnLoadState(next);
               setAutoPlayOnLoad(next);
             }}
-            aria-pressed={autoPlayOnLoad}
-          >
-            {autoPlayOnLoad ? "On" : "Off"}
-          </button>
+            title="Resume last track when opening app"
+          />
         </div>
-        <p className="settings-description">
-          When on, the last track and position resume automatically when you open Music.
-        </p>
       </section>
     </div>
   );
@@ -1044,7 +1016,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           <div>
             <h2 className="settings-fullscreen-title">Settings</h2>
             <p className="settings-fullscreen-subtitle">
-              Tune how Music looks, sounds, and stores data.
+              Look, sound, data.
             </p>
           </div>
           <button

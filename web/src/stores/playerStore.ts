@@ -207,6 +207,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       useTelemetryStore.getState().recordPlayPauseToggle();
     }
     const next = !get().isPlaying;
+    // #region agent log
+    if (next) fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:togglePlay',message:'isPlaying set true',data:{source:'togglePlay'},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     set({ isPlaying: next });
     const { currentTrackId, currentTime } = get();
     persistPlayerPosition({
@@ -271,6 +274,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
   play: () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:play',message:'isPlaying set true',data:{source:'play'},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     set({ isPlaying: true });
     const { currentTrackId, currentTime } = get();
     persistPlayerPosition({
@@ -290,11 +296,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const currentIndex = queue.indexOf(currentTrackId);
     const nextIndex = currentIndex + 1;
     if (repeat === "track") {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:next',message:'isPlaying set true',data:{source:'next(repeat track)'},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       set({ isPlaying: true });
       return;
     }
     if (nextIndex < queue.length) {
       const nextId = queue[nextIndex];
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:next',message:'isPlaying set true',data:{source:'next(advance)'},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       set({ currentTrackId: nextId, isPlaying: true, currentTime: 0 });
       persistPlayerPosition({
         currentTrackId: nextId,
@@ -305,6 +317,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
     if (repeat === "queue" && queue.length > 0) {
       const nextId = queue[0];
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:next',message:'isPlaying set true',data:{source:'next(repeat queue)'},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       set({ currentTrackId: nextId, isPlaying: true, currentTime: 0 });
       persistPlayerPosition({
         currentTrackId: nextId,

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>Music Tray Menu</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: var(--tray-text, #e8e9ec);
+      background: var(--tray-bg, #0c0c0f);
+      border-radius: 12px;
+      border: 1px solid var(--tray-border, rgba(255,255,255,0.06));
+      min-width: 160px;
+    }
+    .tray-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px 14px;
+      margin: 2px 0;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--tray-text, #e8e9ec);
+      background: var(--tray-surface, transparent);
+      transition: background 0.15s ease;
+    }
+    .tray-btn:hover {
+      background: var(--tray-hover, rgba(255,255,255,0.08));
+    }
+    .tray-btn:active {
+      background: var(--tray-hover-strong, rgba(255,255,255,0.12));
+    }
+    .tray-btn.tray-btn-accent {
+      color: var(--tray-accent, #1db954);
+      background: rgba(var(--tray-accent-rgb, 29, 185, 84), 0.12);
+    }
+    .tray-btn.tray-btn-accent:hover {
+      background: rgba(var(--tray-accent-rgb, 29, 185, 84), 0.2);
+    }
+    .tray-btn.tray-btn-quit {
+      margin-top: 6px;
+      color: var(--tray-muted, #8b8e9a);
+    }
+  </style>
+</head>
+<body>
+  <div id="menu">
+    <button type="button" class="tray-btn" data-action="show">Show</button>
+    <button type="button" class="tray-btn tray-btn-accent" data-action="playpause">—</button>
+    <button type="button" class="tray-btn tray-btn-accent" data-action="mutetoggle">—</button>
+    <button type="button" class="tray-btn tray-btn-quit" data-action="quit">Quit</button>
+  </div>
+  <script>
+    (function() {
+      const playpauseBtn = document.querySelector('[data-action="playpause"]');
+      const mutetoggleBtn = document.querySelector('[data-action="mutetoggle"]');
+
+      function parseRgb(hex) {
+        const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+        if (!m) return '29, 185, 84';
+        return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)].join(', ');
+      }
+
+      function applyTheme(theme) {
+        if (!theme) return;
+        document.body.style.setProperty('--tray-bg', theme.bg || '#0c0c0f');
+        document.body.style.setProperty('--tray-surface', theme.surface || 'transparent');
+        document.body.style.setProperty('--tray-text', theme.text || '#e8e9ec');
+        document.body.style.setProperty('--tray-border', theme.border || 'rgba(255,255,255,0.06)');
+        document.body.style.setProperty('--tray-hover', theme.hover || 'rgba(255,255,255,0.08)');
+        document.body.style.setProperty('--tray-hover-strong', theme.hoverStrong || 'rgba(255,255,255,0.12)');
+        document.body.style.setProperty('--tray-accent', theme.accent || '#1db954');
+        document.body.style.setProperty('--tray-accent-rgb', parseRgb(theme.accent || '#1db954'));
+        document.body.style.setProperty('--tray-muted', theme.muted || '#8b8e9a');
+      }
+
+      function updateLabels(isPlaying, isMuted) {
+        playpauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+        mutetoggleBtn.textContent = isMuted ? 'Unmute' : 'Mute';
+      }
+
+      if (window.trayMenuAPI) {
+        window.trayMenuAPI.onState(function(state) {
+          applyTheme(state.theme);
+          updateLabels(state.isPlaying, state.isMuted);
+        });
+
+        document.getElementById('menu').addEventListener('click', function(e) {
+          const btn = e.target.closest('[data-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-action');
+          if (action === 'show') window.trayMenuAPI.sendAction('show');
+          else if (action === 'quit') window.trayMenuAPI.sendAction('quit');
+          else if (action === 'playpause') window.trayMenuAPI.sendAction(playpauseBtn.textContent === 'Pause' ? 'pause' : 'play');
+          else if (action === 'mutetoggle') window.trayMenuAPI.sendAction(mutetoggleBtn.textContent === 'Mute' ? 'mute' : 'unmute');
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

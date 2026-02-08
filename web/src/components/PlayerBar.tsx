@@ -23,9 +23,12 @@ export const PlayerBar = ({
 }: PlayerBarProps) => {
   const progressTrackRef = useRef<HTMLDivElement>(null);
   const previousVolumeRef = useRef<number>(0.8);
+  const volumeAnimationRef = useRef<number | null>(null);
   const [isDraggingProgress, setIsDraggingProgress] = useState(false);
   const [dragTime, setDragTime] = useState(0);
   const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
+  const [isSpeedIconSpinning, setIsSpeedIconSpinning] = useState(false);
+  const speedSpinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isOverlayLeaving, setIsOverlayLeaving] = useState(false);
   const [isOverlayEntered, setIsOverlayEntered] = useState(false);
@@ -72,6 +75,12 @@ export const PlayerBar = ({
 
   const handleToggleSpeedMenu = useCallback(() => {
     setIsSpeedMenuOpen((prev) => !prev);
+    if (speedSpinTimeoutRef.current) clearTimeout(speedSpinTimeoutRef.current);
+    setIsSpeedIconSpinning(true);
+    speedSpinTimeoutRef.current = setTimeout(() => {
+      setIsSpeedIconSpinning(false);
+      speedSpinTimeoutRef.current = null;
+    }, 750);
   }, []);
 
   const handleSelectSpeed = useCallback((value: number) => {
@@ -92,11 +101,47 @@ export const PlayerBar = ({
   );
 
   const handleMuteClick = useCallback(() => {
+    if (volumeAnimationRef.current != null) {
+      cancelAnimationFrame(volumeAnimationRef.current);
+      volumeAnimationRef.current = null;
+    }
     if (volume > 0) {
       previousVolumeRef.current = volume;
-      setVolume(0);
+      const startVolume = volume;
+      const startTime = performance.now();
+      const durationMs = 400;
+      const tick = (now: number) => {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / durationMs, 1);
+        const eased = 1 - (1 - t) * (1 - t);
+        const next = startVolume * (1 - eased);
+        setVolume(next);
+        if (t < 1) {
+          volumeAnimationRef.current = requestAnimationFrame(tick);
+        } else {
+          setVolume(0);
+          volumeAnimationRef.current = null;
+        }
+      };
+      volumeAnimationRef.current = requestAnimationFrame(tick);
     } else {
-      setVolume(previousVolumeRef.current || 0.8);
+      const targetVolume = previousVolumeRef.current || 0.8;
+      const startTime = performance.now();
+      const durationMs = 400;
+      const tick = (now: number) => {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / durationMs, 1);
+        const eased = t * t;
+        const next = targetVolume * eased;
+        setVolume(next);
+        if (t < 1) {
+          volumeAnimationRef.current = requestAnimationFrame(tick);
+        } else {
+          setVolume(targetVolume);
+          volumeAnimationRef.current = null;
+        }
+      };
+      volumeAnimationRef.current = requestAnimationFrame(tick);
     }
   }, [volume, setVolume]);
 
@@ -156,6 +201,20 @@ export const PlayerBar = ({
       window.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isSpeedMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (speedSpinTimeoutRef.current) clearTimeout(speedSpinTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (volumeAnimationRef.current != null) {
+        cancelAnimationFrame(volumeAnimationRef.current);
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!isExpanded) {
@@ -388,7 +447,9 @@ export const PlayerBar = ({
                     title={`Playback speed (${playbackRate.toFixed(2).replace(/\.00$/, "").replace(/0$/, "")}×)`}
                     aria-label={`Playback speed ${playbackRate}×`}
                   >
-                    <SpeedIcon />
+                    <span className={`playback-speed-button-icon${isSpeedIconSpinning ? " playback-speed-button-icon--spin" : ""}`}>
+                      <SpeedIcon />
+                    </span>
                   </button>
                   {isSpeedMenuOpen && (
                     <div className="playback-speed-menu" role="listbox">
@@ -433,7 +494,13 @@ export const PlayerBar = ({
                     max={1}
                     step={0.01}
                     value={volume}
-                    onChange={(event) => setVolume(Number(event.target.value))}
+                    onChange={(event) => {
+                      if (volumeAnimationRef.current != null) {
+                        cancelAnimationFrame(volumeAnimationRef.current);
+                        volumeAnimationRef.current = null;
+                      }
+                      setVolume(Number(event.target.value));
+                    }}
                   />
                 </div>
               </div>
@@ -630,7 +697,9 @@ export const PlayerBar = ({
             title={`Playback speed (${playbackRate.toFixed(2).replace(/\.00$/, "").replace(/0$/, "")}×)`}
             aria-label={`Playback speed ${playbackRate}×`}
           >
-            <SpeedIcon />
+            <span className={`playback-speed-button-icon${isSpeedIconSpinning ? " playback-speed-button-icon--spin" : ""}`}>
+              <SpeedIcon />
+            </span>
           </button>
           {isSpeedMenuOpen && (
             <div className="playback-speed-menu" role="listbox">
@@ -677,7 +746,13 @@ export const PlayerBar = ({
             max={1}
             step={0.01}
             value={volume}
-            onChange={(event) => setVolume(Number(event.target.value))}
+            onChange={(event) => {
+              if (volumeAnimationRef.current != null) {
+                cancelAnimationFrame(volumeAnimationRef.current);
+                volumeAnimationRef.current = null;
+              }
+              setVolume(Number(event.target.value));
+            }}
           />
         </div>
       </div>
@@ -803,15 +878,8 @@ function VolumeMutedIcon() {
 function SpeedIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 2v4" />
-      <path d="m6.34 6.34 2.83 2.83" />
-      <path d="M2 12h4" />
-      <path d="m6.34 17.66 2.83-2.83" />
-      <path d="M12 18v4" />
-      <path d="m17.66 17.66-2.83-2.83" />
-      <path d="M18 12h4" />
-      <path d="m17.66 6.34-2.83 2.83" />
-      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 12 16 8" />
     </svg>
   );
 }

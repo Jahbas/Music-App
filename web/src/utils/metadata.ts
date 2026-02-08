@@ -1,5 +1,7 @@
 import { parseBlob } from "music-metadata-browser";
 
+/** Path-based imports (addFilePaths, watcher) are parsed in the Electron main process via parse-metadata-from-path; this module is used only for blob/handle sources (addFiles, addFileHandles). */
+
 export type ParsedMetadata = {
   title: string;
   artist: string;

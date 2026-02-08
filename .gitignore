@@ -25,6 +25,9 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Local release log (not for commit; used until next CHANGELOG version)
+UPCOMING_RELEASE.md
+
 # Electron / installer artifacts
 *.tgz
 *.zip

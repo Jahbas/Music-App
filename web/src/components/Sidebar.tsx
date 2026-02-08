@@ -603,7 +603,7 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
           for (const { name, getHandles } of toProcess) {
             const handles = await getHandles();
             const trackIds = handles.length > 0 ? await addFileHandles(handles) : [];
-            const playlist = await createPlaylist({ name });
+            const playlist = await createPlaylist({ name, folderId: targetFolderId });
             if (trackIds.length > 0) await addTracksToPlaylist(playlist.id, trackIds);
             if (!firstPlaylistId) firstPlaylistId = playlist.id;
           }
@@ -619,7 +619,7 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
           for (const { name, path: dirPath } of toProcess) {
             const paths = await window.electronAPI.listAudioPaths(dirPath);
             const trackIds = paths.length > 0 ? await addFilePaths(paths) : [];
-            const playlist = await createPlaylist({ name });
+            const playlist = await createPlaylist({ name, folderId: targetFolderId });
             if (trackIds.length > 0) await addTracksToPlaylist(playlist.id, trackIds);
             if (!firstPlaylistId) firstPlaylistId = playlist.id;
           }
@@ -985,6 +985,7 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
                 : [];
             const playlist = await createPlaylist({
               name: entry.displayName,
+              folderId: pending.targetFolderId,
             });
             if (trackIds.length > 0) await addTracksToPlaylist(playlist.id, trackIds);
             if (!firstPlaylistId) firstPlaylistId = playlist.id;

@@ -34,10 +34,8 @@ export const TelemetryView = () => {
   const recordVisit = useTelemetryStore((s) => s.recordVisit);
   const startSession = useTelemetryStore((s) => s.startSession);
   const endSession = useTelemetryStore((s) => s.endSession);
-  const clearAll = useTelemetryStore((s) => s.clearAll);
   const [exportCopied, setExportCopied] = useState(false);
   const [telemetryEnabled, setTelemetryEnabledState] = useState(getTelemetryEnabled());
-  const [confirmClearTelemetry, setConfirmClearTelemetry] = useState(false);
 
   useEffect(() => {
     hydrate();
@@ -80,15 +78,6 @@ export const TelemetryView = () => {
     }
   };
 
-  const handleClearTelemetry = () => {
-    if (!confirmClearTelemetry) {
-      setConfirmClearTelemetry(true);
-      return;
-    }
-    clearAll();
-    setConfirmClearTelemetry(false);
-  };
-
   return (
     <div className="wrapped-view telemetry-view">
       <div className="wrapped-header telemetry-header">
@@ -120,19 +109,6 @@ export const TelemetryView = () => {
         </div>
         <p className="telemetry-intro muted">
           When on, records visits, sessions, listening time, pages, searches, and player actions. All data stays on your device.
-        </p>
-        <div className="settings-row">
-          <span className="settings-row-label">Clear telemetry data</span>
-          <button
-            type="button"
-            className={confirmClearTelemetry ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
-            onClick={handleClearTelemetry}
-          >
-            {confirmClearTelemetry ? "Click again to clear" : "Clear telemetry"}
-          </button>
-        </div>
-        <p className="telemetry-intro muted">
-          Clears all stored telemetry sessions and visit counters. This cannot be undone.
         </p>
       </div>
 

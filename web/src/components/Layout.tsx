@@ -9,8 +9,10 @@ import { useFolderStore } from "../stores/folderStore";
 import { useProfileLikesStore } from "../stores/profileLikesStore";
 import { useArtistStore } from "../stores/artistStore";
 import { useThemeStore } from "../stores/themeStore";
+import { usePlayerStore } from "../stores/playerStore";
 import { useTelemetry } from "../hooks/useTelemetry";
 import { useShortcuts } from "../hooks/useShortcuts";
+import { getMinimizeToTray } from "../utils/preferences";
 import { AddSongsProgress } from "./AddSongsProgress";
 import { DragAddToPlaylistOverlay } from "./DragAddToPlaylistOverlay";
 import { LikedSongToast } from "./LikedSongToast";
@@ -45,6 +47,66 @@ export const Layout = () => {
   useEffect(() => {
     if (settingsOpen) setQueuePanelOpen(false);
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.electronAPI?.setMinimizeToTray) {
+      window.electronAPI.setMinimizeToTray(getMinimizeToTray());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI?.onTrayMenuAction) return;
+    window.__getTrayMenuState = () => {
+      const s = usePlayerStore.getState();
+      const root = document.documentElement;
+      const getVar = (v: string) =>
+        getComputedStyle(root).getPropertyValue(v).trim() || (v === "--color-accent" ? "#1db954" : "#060608");
+      return {
+        isPlaying: s.isPlaying,
+        isMuted: s.volume === 0,
+        theme: {
+          accent: getVar("--color-accent"),
+          bg: getVar("--color-bg"),
+          surface: getVar("--color-surface"),
+          text: getVar("--color-text"),
+          border: getVar("--color-border"),
+          hover: getVar("--color-hover"),
+          hoverStrong: getComputedStyle(root).getPropertyValue("--color-hover-strong").trim(),
+          muted: getComputedStyle(root).getPropertyValue("--color-muted").trim(),
+        },
+      };
+    };
+    const unsub = window.electronAPI.onTrayMenuAction((action) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Layout.tsx:tray',message:'tray-menu-action',data:{action},hypothesisId:'H4',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      const player = usePlayerStore.getState();
+      switch (action) {
+        case "show":
+          break;
+        case "pause":
+          player.pause();
+          break;
+        case "play":
+          player.play();
+          break;
+        case "mute":
+          player.setVolume(0);
+          break;
+        case "unmute":
+          usePlayerStore.getState().setVolume(0.8);
+          break;
+        case "quit":
+          break;
+        default:
+          break;
+      }
+    });
+    return () => {
+      delete (window as Window & { __getTrayMenuState?: unknown }).__getTrayMenuState;
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     void hydrateTheme();
@@ -136,7 +198,7 @@ export const Layout = () => {
 
   return (
     <div
-      className={`app-shell${settingsOpen ? " app-shell--settings-open" : ""}`}
+      className={`app-shell${settingsOpen ? " app-shell--settings-open" : ""}${queuePanelOpen ? " app-shell--queue-open" : ""}`}
       onDragOver={handleAppDragOver}
       onDrop={handleAppDrop}
       onContextMenu={(e) => e.preventDefault()}

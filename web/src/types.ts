@@ -1,4 +1,4 @@
-export type TrackSourceType = "blob" | "handle";
+export type TrackSourceType = "blob" | "handle" | "path";
 
 export type Track = {
   id: string;
@@ -10,9 +10,11 @@ export type Track = {
   year?: number;
   tags?: string[];
   sourceType: TrackSourceType;
+  /** Present when sourceType === "blob". */
   fileBlob?: Blob;
+  /** Present when sourceType === "handle". */
   fileHandle?: FileSystemFileHandle;
-  /** Optional original file path (used by desktop watcher imports for de-dupe). */
+  /** Required when sourceType === "path". Also used by desktop watcher for de-dupe. */
   sourcePath?: string;
   /** Optional content hash (desktop watcher de-dupe). */
   sourceHash?: string;

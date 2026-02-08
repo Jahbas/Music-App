@@ -1,3 +1,25 @@
+## 1.6.0 - 2026-02-08
+
+### New
+
+- **Minimize to system tray:** When closing the window, Music can hide to the system tray instead of quitting (Settings → General → Minimize to tray on close). Left-click the tray icon for a themed popup with Show, Pause/Play, Mute/Unmute, and Quit; right-click for the native context menu. Playback continues in the background.
+
+### Improvements
+
+- **Theme & colors:** Unified color palette across the app. Liked/heart icon uses your accent color. Top bar matches the main content background. Single semantic variables for danger, on-accent, and panel gradients; fewer stray shades.
+- **Settings revamp:** Cleaner layout with less text and reorganized categories (App, Library, Privacy, Storage, Artists, Danger zone, Defaults). All On/Off options use a slider-style switch; the accent fill animates with the thumb and no longer fades on hover. Telemetry moved to Data & privacy → Privacy. Button sizes unified; EQ unchanged.
+- **Queue & player bar:** When the queue panel is open and the window is under 1780px wide, the player bar hides so the queue has full space; on wider screens both stay visible. Search bar placeholder shows “Press / to search.”
+- **Player:** Volume mute animates the slider and value smoothly to zero (and back when unmuting). Playback speed button uses a speedometer icon and spins on click.
+- **Sidebar:** Dropping multiple folders onto a folder now creates playlists inside that folder instead of ignoring the target.
+- **Electron:** Path-based tracks no longer load full files into the renderer or IndexedDB; metadata is parsed in main and playback uses file URLs. Saves memory and disk.
+- **Data:** Delete all songs now also clears all playlists and playlist folders. Telemetry view no longer shows a “Clear telemetry data” option (data is local-only).
+
+### Bug fixes
+
+- **Sidebar:** Fixed folder drop target when dropping multiple folders onto an existing folder; playlists are now created inside that folder.
+
+---
+
 ## 1.5.0 - 2026-02-08
 
 ### New

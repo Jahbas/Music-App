@@ -13,6 +13,15 @@ const playIgnoringAbort = (audio: HTMLAudioElement): Promise<void> =>
     }
   });
 
+/** True if the URL is a blob URL that we must revoke to avoid leaks. */
+const isBlobUrl = (url: string | null): boolean =>
+  url != null && url.startsWith("blob:");
+
+/** Revoke a track URL only if it is a blob URL (file:// and appfile:// must not be revoked). */
+const revokeTrackUrl = (url: string | null): void => {
+  if (isBlobUrl(url)) URL.revokeObjectURL(url!);
+};
+
 const getTrackUrl = async (trackId: string | null) => {
   if (!trackId) {
     return null;
@@ -22,6 +31,17 @@ const getTrackUrl = async (trackId: string | null) => {
     .tracks.find((item) => item.id === trackId);
 
   const sourceType = trackInStore?.sourceType;
+  const api = (window as Window & { electronAPI?: { getAudioUrl?: (path: string) => Promise<string> } }).electronAPI;
+
+  // Path-based tracks, or legacy path tracks (still stored as blob) with sourcePath: play from file.
+  if (trackInStore?.sourcePath && api?.getAudioUrl) {
+    try {
+      return await api.getAudioUrl(trackInStore.sourcePath);
+    } catch {
+      if (sourceType === "path") return null;
+      // Fall through to blob/handle for legacy path tracks if file moved.
+    }
+  }
 
   if (sourceType === "blob") {
     const dbTrack = await trackDb.get(trackId);
@@ -183,7 +203,7 @@ export const useAudio = () => {
     } else if (lanesRef.current.b) {
       const laneB = lanesRef.current.b;
       if (laneB.currentUrl) {
-        URL.revokeObjectURL(laneB.currentUrl);
+        revokeTrackUrl(laneB.currentUrl);
         laneB.currentUrl = null;
       }
       laneB.audio.pause();
@@ -213,6 +233,12 @@ export const useAudio = () => {
     };
 
     audio.onended = () => {
+      const storeIsPlaying = usePlayerStore.getState().isPlaying;
+      const repeat = usePlayerStore.getState().repeat;
+      const gaplessActive = Boolean(gaplessEnabled && !crossfadeEnabled && gaplessPreloadedRef.current);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAudio.ts:onended',message:'onended fired',data:{storeIsPlaying,repeat,gaplessActive,ignoreOnEnded:ignoreOnEndedRef.current,isCrossfading:isCrossfadingRef.current},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (ignoreOnEndedRef.current) {
         ignoreOnEndedRef.current = false;
         return;
@@ -233,7 +259,7 @@ export const useAudio = () => {
 
         currentLane.audio.pause();
         if (currentLane.currentUrl) {
-          URL.revokeObjectURL(currentLane.currentUrl);
+          revokeTrackUrl(currentLane.currentUrl);
           currentLane.currentUrl = null;
         }
 
@@ -253,6 +279,9 @@ export const useAudio = () => {
         const playerState = usePlayerStore.getState();
         playerState.setCurrentTime(newAudio.currentTime || 0);
         playerState.setDuration(newAudio.duration || 0);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAudio.ts:onended-gapless',message:'gapless branch set isPlaying true',data:{storeWasPlaying:storeIsPlaying},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         usePlayerStore.setState({
           currentTrackId: info.trackId,
           isPlaying: true,
@@ -261,12 +290,17 @@ export const useAudio = () => {
         return;
       }
 
-      const repeat = usePlayerStore.getState().repeat;
       if (repeat === "track") {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAudio.ts:onended-repeatTrack',message:'repeat track branch calling play',data:{storeIsPlaying},hypothesisId:'H3',timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         audio.currentTime = 0;
         void playIgnoringAbort(audio);
         return;
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAudio.ts:onended-next',message:'calling next()',data:{storeIsPlaying},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       next();
     };
   }, [next, setCurrentTime, setDuration, crossfadeEnabled, gaplessEnabled, getActiveLane]);
@@ -294,7 +328,7 @@ export const useAudio = () => {
         return;
       }
       if (lane.currentUrl) {
-        URL.revokeObjectURL(lane.currentUrl);
+        revokeTrackUrl(lane.currentUrl);
       }
       lane.currentUrl = url;
       audio.src = url;
@@ -408,7 +442,7 @@ export const useAudio = () => {
           return;
         }
         if (inactive.currentUrl) {
-          URL.revokeObjectURL(inactive.currentUrl);
+          revokeTrackUrl(inactive.currentUrl);
         }
         inactive.currentUrl = url;
         inactive.audio.src = url;
@@ -436,7 +470,7 @@ export const useAudio = () => {
         setTimeout(() => {
           lane.audio.pause();
           if (lane.currentUrl) {
-            URL.revokeObjectURL(lane.currentUrl);
+            revokeTrackUrl(lane.currentUrl);
             lane.currentUrl = null;
           }
           activeLaneRef.current = activeLaneRef.current === "a" ? "b" : "a";
@@ -512,7 +546,7 @@ export const useAudio = () => {
       try {
         const inactiveLane = getInactiveLane();
         if (inactiveLane.currentUrl) {
-          URL.revokeObjectURL(inactiveLane.currentUrl);
+          revokeTrackUrl(inactiveLane.currentUrl);
           inactiveLane.currentUrl = null;
         }
         const url = await getTrackUrl(nextId);
@@ -548,7 +582,7 @@ export const useAudio = () => {
         const lane = lanes[key];
         if (!lane) continue;
         if (lane.currentUrl) {
-          URL.revokeObjectURL(lane.currentUrl);
+          revokeTrackUrl(lane.currentUrl);
           lane.currentUrl = null;
         }
         lane.audio.pause();

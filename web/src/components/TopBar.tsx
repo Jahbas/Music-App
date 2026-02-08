@@ -143,7 +143,7 @@ export const TopBar = ({ isSettingsOpen, onOpenSettings, onCloseSettings }: TopB
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onFocus={handleTopbarSearchFocus}
-          placeholder="What do you want to play?"
+          placeholder="Press / to search"
           aria-expanded={isSearchOverlayOpen}
           aria-haspopup="dialog"
           readOnly={isSearchOverlayOpen}
