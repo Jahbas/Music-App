@@ -29,8 +29,10 @@ function createMainWindow() {
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js')
     },
-    // Use the custom PNG/ICO artwork placed in build/icons
-    icon: path.join(process.cwd(), 'build', 'icons', 'app.png')
+    // Use the custom PNG/ICO artwork placed in build/icons (app-relative when packaged)
+    icon: app.isPackaged
+      ? path.join(app.getAppPath(), 'build', 'icons', 'app.png')
+      : path.join(process.cwd(), 'build', 'icons', 'app.png')
   });
 
   if (isDev) {
@@ -45,16 +47,17 @@ function createMainWindow() {
     mainWindow.loadURL(indexPath);
   }
 
-  // Useful for diagnosing blank/grey windows in packaged builds
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    // eslint-disable-next-line no-console
-    console.error('did-fail-load', { errorCode, errorDescription, validatedURL });
-  });
-
-  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    // eslint-disable-next-line no-console
-    console.log('renderer-console', { level, message, line, sourceId });
-  });
+  // Useful for diagnosing blank/grey windows in dev
+  if (isDev) {
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      // eslint-disable-next-line no-console
+      console.error('did-fail-load', { errorCode, errorDescription, validatedURL });
+    });
+    mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+      // eslint-disable-next-line no-console
+      console.log('renderer-console', { level, message, line, sourceId });
+    });
+  }
 
   // Ensure any window.open or target="_blank" links open in the user's
   // default browser instead of creating a new in-app window.
@@ -284,6 +287,52 @@ ipcMain.handle('list-audio-paths', async (_event, dirPath: string) => {
   }
   const normalized = path.resolve(dirPath);
   return listAudioFilesRecursive(normalized);
+});
+
+async function listDirectSubdirectories(dirPath: string): Promise<string[]> {
+  const results: string[] = [];
+  try {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        results.push(path.join(dirPath, entry.name));
+      }
+    }
+  } catch {
+    // ignore unreadable
+  }
+  return results;
+}
+
+ipcMain.handle('list-direct-subdirectories', async (_event, dirPath: string) => {
+  if (typeof dirPath !== 'string' || !dirPath.trim()) return [];
+  return listDirectSubdirectories(path.resolve(dirPath));
+});
+
+ipcMain.handle('stat-path', async (_event, filePath: string) => {
+  if (typeof filePath !== 'string' || !filePath.trim()) {
+    return { isDirectory: false };
+  }
+  try {
+    const stats = await fs.promises.stat(path.resolve(filePath));
+    return { isDirectory: stats.isDirectory() };
+  } catch {
+    return { isDirectory: false };
+  }
+});
+
+// Deezer API has no CORS headers; fetch from main process so renderer can get artist images.
+ipcMain.handle('fetch-deezer-url', async (_event, requestUrl: string) => {
+  if (typeof requestUrl !== 'string' || !requestUrl.startsWith('https://api.deezer.com/')) {
+    return { ok: false, status: 0, body: null };
+  }
+  try {
+    const res = await fetch(requestUrl, { headers: { Accept: 'application/json' } });
+    const body = await res.text();
+    return { ok: res.ok, status: res.status, body };
+  } catch {
+    return { ok: false, status: 0, body: null };
+  }
 });
 
 ipcMain.handle('pick-directory', async (_event, defaultPath?: string) => {

@@ -1,31 +1,16 @@
+import { Buffer } from "buffer";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
+import { startFaviconPreload } from "./utils/faviconCache";
 
-const MUSIC_ICON_API = "https://api.iconify.design/mdi/music.svg?color=%231a1a1a";
+// music-metadata-browser expects Node's Buffer in the global scope (renderer has no Node)
+(globalThis as typeof globalThis & { Buffer: typeof Buffer }).Buffer = Buffer;
 
-function setFaviconFromApi(): void {
-  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-  if (!link) {
-    link = document.createElement("link");
-    link.rel = "icon";
-    document.head.appendChild(link);
-  }
-  link.href = MUSIC_ICON_API;
-  link.type = "image/svg+xml";
-
-  let appleTouch = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
-  if (!appleTouch) {
-    appleTouch = document.createElement("link");
-    appleTouch.rel = "apple-touch-icon";
-    document.head.appendChild(appleTouch);
-  }
-  appleTouch.href = MUSIC_ICON_API;
-}
-
-setFaviconFromApi();
+// Preload favicons for link tiles (Spotify, Deezer, TikTok, etc.) so they stay in memory
+startFaviconPreload();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

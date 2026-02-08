@@ -1,3 +1,44 @@
+## 1.5.0 - 2026-02-08
+
+### New
+
+- **Artists view:** New view at `/artists` to browse artists from your library. Shows artist list with profile images (iTunes and Deezer), MusicBrainz metadata, and optional cached artist info. Reached from the sidebar “Artists” button or by navigating to Artists.
+- **Sidebar Artists button:** “Artists” in the sidebar shows the current track’s artist avatar (or a placeholder). Tapping it opens the Artists view; the artist for the now-playing track is preloaded when available.
+- **Artist info modal:** From the Artists view you can open full artist details: name, type, country, and link tiles (Spotify, Deezer, YouTube, TikTok, etc.) with favicons. Data comes from MusicBrainz, iTunes, and Deezer; persistence is optional (Settings → Data & privacy → Artist data).
+- **Folder import preview:** Dropping a folder on the sidebar that has multiple subfolders opens a preview modal listing the playlists that would be created. You confirm or cancel before import; each subfolder becomes its own playlist.
+- **Liked song toast:** When you save a track to Liked Songs, a brief toast confirms it was added.
+
+### Improvements
+
+- **Folder drop on sidebar:** A folder dropped on the sidebar now creates one playlist per subfolder (or one playlist when the folder is flat). Root-level audio files can be attached to the first playlist. In the built Electron app, folder drops fall back to `listAudioPaths` and `listDirectSubdirectories` when the File System Access API isn’t available, so imports work in the EXE too.
+- **Sidebar layout:** Folders section is above Playlists inside the scrollable area; the navigation region has an accessible label.
+
+### Packaged app (EXE) fixes
+
+- **Window icon:** Electron main now uses an app-relative path for the window icon when packaged (`app.getAppPath()` + `build/icons/app.png`). Root `package.json` includes `build/icons/**` in the build so icons are shipped and the taskbar/window icon displays correctly in the installed app.
+- **Favicon:** `web/index.html` favicon href changed from `/favicon.png` to `./favicon.png` so it loads under `file://` in the built Electron app (no more broken favicon in the EXE).
+
+### Improvements
+
+- **Desktop app wording:** All user-facing text that referred to “browser” or “tab” now reflects a desktop app:
+  - **Telemetry view:** Empty state says “close the app or switch away” instead of “close the tab or switch away” to record sessions.
+  - **Settings → Data & privacy:** “How your data is stored” now says data is “stored locally in this app on your device” and explicitly states “This is not browser storage—it stays with the app” so it’s clear storage is app-local, not browser-dependent.
+
+### Bug fixes
+
+- **ArtistInfoModal:** `KNOWN_LINK_DOMAINS` is now typed as `Set<string>` so `host` (string) is valid for `.has()`. Fixes TypeScript error TS2345 (argument of type `string` not assignable to literal union) and restores production build.
+- **EditPlaylistModal:** Watchlist folder “Browse” button now guards `window.electronAPI?.pickDirectory` before calling it, so the call is never “possibly undefined”. Fixes TS2722 and prevents runtime errors when the API is missing.
+- **folderDrop.ts:** Added `DirHandleWithEntries` type and use it when calling `FileSystemDirectoryHandle.entries()`, so the File System Access API is correctly typed where the DOM lib does not declare `entries()`. Fixes TS2339 (Property 'entries' does not exist) and restores folder-drop behavior in builds.
+
+### Internal and cleanup
+
+- **Dead code:** Removed `web/src/utils/buffer-polyfill.ts`; it was never imported. Buffer is set on `globalThis` in `main.tsx` before any code that needs it.
+- **Logging:** Electron main only registers `did-fail-load` and `console-message` handlers when `isDev` is true, so the packaged app does not log to a console. In `web/src/utils/metadata.ts`, the “Failed to parse audio metadata” `console.error` is gated with `import.meta.env.DEV` so production builds stay quiet.
+- **db.ts:** Fixed indentation in the `theme` store schema block (theme key/value) for consistency; no functional change.
+- **Version:** Aligned to 1.5.0 in root and web `package.json` and in README.
+
+---
+
 ## 1.4.0 - 2026-02-06
 
 ### New

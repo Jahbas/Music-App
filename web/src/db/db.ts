@@ -1,5 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 import type { PlayHistoryEntry, Profile, ProfileLike, Playlist, PlaylistFolder, SharedTrack, ThemeSettings, Track } from "../types";
+import type { ArtistInfo } from "../utils/artistApi";
 
 type ImageEntry = {
   id: string;
@@ -42,7 +43,7 @@ interface SpotifyDb extends DBSchema {
   };
   theme: {
     key: string;
-  value: ThemeSettings;
+    value: ThemeSettings;
   };
   playHistory: {
     key: string;
@@ -52,10 +53,14 @@ interface SpotifyDb extends DBSchema {
     key: [string, string];
     value: ProfileLike;
   };
+  artistCache: {
+    key: string;
+    value: { id: string; data: ArtistInfo | null };
+  };
 }
 
 const DB_NAME = "spotify-like-player";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 const dbPromise = openDB<SpotifyDb>(DB_NAME, DB_VERSION, {
   upgrade(db, oldVersion) {
@@ -88,6 +93,9 @@ const dbPromise = openDB<SpotifyDb>(DB_NAME, DB_VERSION, {
     }
     if (!db.objectStoreNames.contains("profileLikes")) {
       db.createObjectStore("profileLikes", { keyPath: ["profileId", "trackId"] });
+    }
+    if (!db.objectStoreNames.contains("artistCache")) {
+      db.createObjectStore("artistCache", { keyPath: "id" });
     }
   },
 });
@@ -290,6 +298,33 @@ export const profileLikesDb = {
   async clear() {
     const db = await dbPromise;
     const tx = db.transaction("profileLikes", "readwrite");
+    await tx.store.clear();
+    await tx.done;
+  },
+};
+
+export const artistCacheDb = {
+  async getAll(): Promise<Record<string, ArtistInfo | null>> {
+    const entries = await (await dbPromise).getAll("artistCache");
+    const out: Record<string, ArtistInfo | null> = {};
+    for (const { id, data } of entries) {
+      out[id] = data;
+    }
+    return out;
+  },
+  async get(id: string): Promise<ArtistInfo | null | undefined> {
+    const entry = await (await dbPromise).get("artistCache", id);
+    return entry?.data;
+  },
+  async put(id: string, data: ArtistInfo | null): Promise<void> {
+    await (await dbPromise).put("artistCache", { id, data });
+  },
+  async remove(id: string): Promise<void> {
+    await (await dbPromise).delete("artistCache", id);
+  },
+  async clear(): Promise<void> {
+    const db = await dbPromise;
+    const tx = db.transaction("artistCache", "readwrite");
     await tx.store.clear();
     await tx.done;
   },

@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useLibraryStore } from "../stores/libraryStore";
 import { usePlayHistoryStore } from "../stores/playHistoryStore";
 import { usePlayerStore } from "../stores/playerStore";
+import { useArtistStore } from "../stores/artistStore";
 import type { WrappedStats } from "../stores/playHistoryStore";
 
 function formatTotalTime(totalSeconds: number): string {
@@ -51,6 +52,19 @@ export const WrappedView = () => {
   );
 
   const trackMap = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks]);
+
+  const getCachedArtist = useArtistStore((s) => s.getCached);
+  const fetchArtist = useArtistStore((s) => s.fetchArtist);
+  const topArtistNames = useMemo(
+    () => stats.topArtists.slice(0, 20).map((a) => a.artist),
+    [stats.topArtists]
+  );
+
+  useEffect(() => {
+    topArtistNames.forEach((name) => {
+      if (getCachedArtist(name) === undefined) void fetchArtist(name);
+    });
+  }, [topArtistNames.join(",")]);
 
   const handlePlayTrack = (trackId: string) => {
     const queue = stats.topTrackIds.map((t) => t.trackId);
@@ -146,17 +160,40 @@ export const WrappedView = () => {
             <p className="muted">No plays in this period.</p>
           ) : (
             <ul className="wrapped-list">
-              {stats.topArtists.slice(0, 20).map((item, index) => (
-                <li key={item.artist} className="wrapped-list-item">
-                  <span className="wrapped-rank">{index + 1}</span>
-                  <div className="wrapped-artist-info">
-                    <span className="wrapped-track-title">{item.artist}</span>
-                    <span className="muted">
-                      {formatTotalTime(item.seconds)} ({item.plays} plays)
-                    </span>
-                  </div>
-                </li>
-              ))}
+              {stats.topArtists.slice(0, 20).map((item, index) => {
+                const info = getCachedArtist(item.artist);
+                return (
+                  <li key={item.artist} className="wrapped-list-item wrapped-artist-card">
+                    <span className="wrapped-rank">{index + 1}</span>
+                    <div className="wrapped-artist-card-artwork">
+                      {info?.imageUrl ? (
+                        <img src={info.imageUrl} alt="" />
+                      ) : (
+                        <div className="wrapped-artist-card-artwork-placeholder" aria-hidden>
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path d="M12 2a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z" />
+                            <path d="M4 10a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="wrapped-artist-info" style={{ flex: 1 }}>
+                      <span className="wrapped-track-title">
+                        {info?.musicBrainzUrl ? (
+                          <a href={info.musicBrainzUrl} target="_blank" rel="noopener noreferrer" className="wrapped-artist-link">
+                            {info.name}
+                          </a>
+                        ) : (
+                          item.artist
+                        )}
+                      </span>
+                      <span className="muted">
+                        {formatTotalTime(item.seconds)} ({item.plays} plays)
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

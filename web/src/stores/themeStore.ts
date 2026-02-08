@@ -49,16 +49,24 @@ const parseHexToRgb = (hex: string): { r: number; g: number; b: number } | null 
   return { r, g, b };
 };
 
-const normalizeSettings = (settings: ThemeSettings): ThemeSettings => ({
-  mode: settings.mode ?? DEFAULT_MODE,
-  accent: settings.accent || DEFAULT_ACCENT,
-  density: settings.density ?? DEFAULT_DENSITY,
-  motion: settings.motion ?? DEFAULT_MOTION,
-  name: settings.name,
-  audio: settings.audio,
-  player: settings.player,
-  preferences: settings.preferences,
-});
+const VALID_MODES: ThemeMode[] = ["dark", "light", "oled"];
+
+const normalizeSettings = (settings: ThemeSettings): ThemeSettings => {
+  const mode =
+    settings.mode && VALID_MODES.includes(settings.mode as ThemeMode)
+      ? (settings.mode as ThemeMode)
+      : DEFAULT_MODE;
+  return {
+    mode,
+    accent: settings.accent || DEFAULT_ACCENT,
+    density: settings.density ?? DEFAULT_DENSITY,
+    motion: settings.motion ?? DEFAULT_MOTION,
+    name: settings.name,
+    audio: settings.audio,
+    player: settings.player,
+    preferences: settings.preferences,
+  };
+};
 
 const applyThemeToDocument = (rawSettings: ThemeSettings) => {
   const settings = normalizeSettings(rawSettings);

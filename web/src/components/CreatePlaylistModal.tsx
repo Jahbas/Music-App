@@ -1,8 +1,6 @@
 import { useState, useRef } from "react";
 import { usePlaylistStore } from "../stores/playlistStore";
-import { useFolderStore } from "../stores/folderStore";
 import { Modal } from "./Modal";
-import { FolderSelect } from "./FolderSelect";
 
 type CreatePlaylistModalProps = {
   isOpen: boolean;
@@ -16,11 +14,9 @@ export const CreatePlaylistModal = ({
   onCreated,
 }: CreatePlaylistModalProps) => {
   const createPlaylist = usePlaylistStore((state) => state.createPlaylist);
-  const folders = useFolderStore((state) => state.folders);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [imageFile, setImageFile] = useState<File | undefined>(undefined);
-  const [folderId, setFolderId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,12 +35,10 @@ export const CreatePlaylistModal = ({
       name: trimmed,
       description: description.trim() || undefined,
       imageFile,
-      folderId: folderId || undefined,
     });
     setName("");
     setDescription("");
     setImageFile(undefined);
-    setFolderId("");
     setError(null);
     onCreated(playlist.id);
     onClose();
@@ -97,12 +91,6 @@ export const CreatePlaylistModal = ({
             {imageFile ? imageFile.name : "Choose image"}
           </button>
         </div>
-        {folders.length > 0 && (
-          <label>
-            Folder
-            <FolderSelect value={folderId} onChange={setFolderId} />
-          </label>
-        )}
         <button className="primary-button" type="submit">
           Create playlist
         </button>

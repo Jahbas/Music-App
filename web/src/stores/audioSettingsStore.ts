@@ -5,6 +5,7 @@ const CROSSFADE_MS_KEY = "audio-crossfade-ms";
 const GAPLESS_ENABLED_KEY = "audio-gapless-enabled";
 const EQ_ENABLED_KEY = "audio-eq-enabled";
 const EQ_PRESET_ID_KEY = "audio-eq-preset-id";
+const EQ_BANDS_KEY = "audio-eq-bands";
 
 export type EqBand = {
   frequency: number;
@@ -79,6 +80,42 @@ function persistNumber(key: string, value: number) {
   }
 }
 
+function persistString(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function loadEqBands(key: string, fallback: EqBand[]): EqBand[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return fallback;
+    const bands = parsed.filter(
+      (b): b is EqBand =>
+        b != null &&
+        typeof b === "object" &&
+        typeof (b as EqBand).frequency === "number" &&
+        typeof (b as EqBand).gain === "number" &&
+        typeof (b as EqBand).q === "number"
+    );
+    return bands.length > 0 ? bands : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistEqBands(key: string, bands: EqBand[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(bands));
+  } catch {
+    // ignore
+  }
+}
+
 const DEFAULT_EQ_BANDS: EqBand[] = [
   { frequency: 60, gain: 0, q: 1 },
   { frequency: 170, gain: 0, q: 1 },
@@ -138,7 +175,10 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
   gaplessEnabled: loadBoolean(GAPLESS_ENABLED_KEY, true),
   eqEnabled: loadBoolean(EQ_ENABLED_KEY, false),
   eqPresetId: loadEqPresetId(EQ_PRESET_ID_KEY, "flat"),
-  eqBands: presetToBands(loadEqPresetId(EQ_PRESET_ID_KEY, "flat")),
+  eqBands: (() => {
+    const preset = loadEqPresetId(EQ_PRESET_ID_KEY, "flat");
+    return loadEqBands(EQ_BANDS_KEY, presetToBands(preset));
+  })(),
   setCrossfadeEnabled: (value) => {
     set({ crossfadeEnabled: value });
     persistBoolean(CROSSFADE_ENABLED_KEY, value);
@@ -162,10 +202,12 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
       eqPresetId: preset,
       eqBands: bands,
     });
-    persistBoolean(EQ_PRESET_ID_KEY, preset === "flat" ? false : true);
+    persistString(EQ_PRESET_ID_KEY, preset);
+    persistEqBands(EQ_BANDS_KEY, bands);
   },
   setEqBands: (bands) => {
     set({ eqBands: bands });
+    persistEqBands(EQ_BANDS_KEY, bands);
   },
 }));
 

@@ -7,11 +7,13 @@ import { usePlaylistStore } from "../stores/playlistStore";
 import { useProfileStore } from "../stores/profileStore";
 import { useFolderStore } from "../stores/folderStore";
 import { useProfileLikesStore } from "../stores/profileLikesStore";
+import { useArtistStore } from "../stores/artistStore";
 import { useThemeStore } from "../stores/themeStore";
 import { useTelemetry } from "../hooks/useTelemetry";
 import { useShortcuts } from "../hooks/useShortcuts";
 import { AddSongsProgress } from "./AddSongsProgress";
 import { DragAddToPlaylistOverlay } from "./DragAddToPlaylistOverlay";
+import { LikedSongToast } from "./LikedSongToast";
 import { PlayerBar } from "./PlayerBar";
 import { QueuePanel } from "./QueuePanel";
 import { Sidebar } from "./Sidebar";
@@ -27,6 +29,7 @@ export const Layout = () => {
   const hydrateFolders = useFolderStore((state) => state.hydrate);
   const hydratePlayHistory = usePlayHistoryStore((state) => state.hydrate);
   const hydrateProfileLikes = useProfileLikesStore((state) => state.hydrate);
+  const hydrateArtistCache = useArtistStore((state) => state.hydrate);
   const folders = useFolderStore((s) => s.folders);
   const playlists = usePlaylistStore((s) => s.playlists);
   const addFilePaths = useLibraryStore((s) => s.addFilePaths);
@@ -52,6 +55,7 @@ export const Layout = () => {
       await hydrateFolders();
       await hydratePlayHistory();
       await hydrateProfileLikes();
+      await hydrateArtistCache();
     })();
   }, [
     hydrateTheme,
@@ -61,6 +65,7 @@ export const Layout = () => {
     hydrateFolders,
     hydratePlayHistory,
     hydrateProfileLikes,
+    hydrateArtistCache,
   ]);
 
   // Resume watched playlist watchers (desktop app only).
@@ -160,6 +165,7 @@ export const Layout = () => {
         <QueuePanel onClose={() => setQueuePanelOpen(false)} />
       )}
       <AddSongsProgress />
+      <LikedSongToast />
       {dragActive && (
         <DragAddToPlaylistOverlay
           trackIds={draggingTrackIds}

@@ -1,8 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
-// Expose a minimal, typed API surface for future native integrations.
-// Right now we don't need any special Electron-only functions because
-// the web app already runs fully in the browser environment.
+// Expose a minimal, typed API for the Electron renderer (window controls, file system, native dialogs).
 
 contextBridge.exposeInMainWorld('electronAPI', {
   windowControl: (action: 'minimize' | 'maximize' | 'close' | 'toggle-maximize') => {
@@ -28,6 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listAudioPaths: (dirPath: string) => {
     return ipcRenderer.invoke('list-audio-paths', dirPath);
   },
+  listDirectSubdirectories: (dirPath: string) => {
+    return ipcRenderer.invoke('list-direct-subdirectories', dirPath) as Promise<string[]>;
+  },
   /**
    * Open a native directory picker. When a default path is provided and exists,
    * the dialog will start in that folder which makes selecting / tweaking
@@ -36,6 +37,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pickDirectory: async (defaultPath?: string) => {
     return ipcRenderer.invoke('pick-directory', defaultPath);
   },
+  /** Fetch a Deezer API URL from main process (bypasses CORS). Returns { ok, status, body }. */
+  fetchDeezerUrl: (url: string) => {
+    return ipcRenderer.invoke('fetch-deezer-url', url) as Promise<{ ok: boolean; status: number; body: string | null }>;
+  },
+  /** Get filesystem path for a dropped File (for drag-drop folder support when getAsFileSystemHandle is unavailable). */
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  /** Check if a path is a directory (for classifying dropped items). */
+  statPath: (filePath: string) => ipcRenderer.invoke('stat-path', filePath) as Promise<{ isDirectory: boolean }>,
 });
 
 export {};

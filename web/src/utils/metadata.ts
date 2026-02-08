@@ -104,7 +104,9 @@ export const parseAudioMetadata = async (file: File): Promise<ParsedMetadata> =>
 
     return { title, artist, album, duration, year, artworkBlob };
   } catch (error) {
-    console.error("Failed to parse audio metadata", error);
+    if (import.meta.env.DEV) {
+      console.error("Failed to parse audio metadata", error);
+    }
     return {
       title: file.name.replace(/\.[^/.]+$/, ""),
       artist: "Unknown Artist",

@@ -119,7 +119,7 @@ export const TelemetryView = () => {
           </button>
         </div>
         <p className="telemetry-intro muted">
-          When on, records visits, sessions, listening time, pages, searches, and player actions. All data stays in your browser.
+          When on, records visits, sessions, listening time, pages, searches, and player actions. All data stays on your device.
         </p>
         <div className="settings-row">
           <span className="settings-row-label">Clear telemetry data</span>
@@ -250,7 +250,7 @@ export const TelemetryView = () => {
 
       {snapshot.totalSessions === 0 && snapshot.totalVisits === 0 && (
         <div className="empty-state">
-          No telemetry yet. Use the app (visit pages, play tracks, search) and close the tab or switch away to record sessions.
+          No telemetry yet. Use the app (visit pages, play tracks, search) and close the app or switch away to record sessions.
         </div>
       )}
     </div>

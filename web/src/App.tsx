@@ -6,6 +6,7 @@ import { FolderView } from "./views/FolderView";
 import { SearchView } from "./views/SearchView";
 import { WrappedView } from "./views/WrappedView";
 import { LikedView } from "./views/LikedView";
+import { ArtistsView } from "./views/ArtistsView";
 import { TelemetryView } from "./views/TelemetryView";
 
 const App = () => {
@@ -16,6 +17,7 @@ const App = () => {
         <Route path="playlist/:id" element={<PlaylistView />} />
         <Route path="folder/:id" element={<FolderView />} />
         <Route path="liked" element={<LikedView />} />
+        <Route path="artists" element={<ArtistsView />} />
         <Route path="search" element={<SearchView />} />
         <Route path="wrapped" element={<WrappedView />} />
         <Route path="telemetry" element={<TelemetryView />} />

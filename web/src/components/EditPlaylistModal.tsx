@@ -322,13 +322,12 @@ export const EditPlaylistModal = ({
                   type="button"
                   className="secondary-button"
                   onClick={async () => {
-                    const api = window.electronAPI;
-                    if (!api?.pickDirectory) return;
-                    const picked = await api.pickDirectory(watchPath || undefined);
+                    const api = window.electronAPI?.pickDirectory;
+                    if (!api) return;
+                    const picked = await api(watchPath || undefined);
                     if (picked) setWatchPath(picked);
                   }}
-                  title={window.electronAPI?.pickDirectory ? "Browse" : "Browse is available in the desktop app"}
-                  disabled={!window.electronAPI?.pickDirectory}
+                  title="Choose folder to watch"
                 >
                   Browse
                 </button>

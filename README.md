@@ -2,7 +2,7 @@
 
 A slick, local‑first desktop music player focused on **fast startup, low memory usage and a clean Windows‑native feel**.
 
-Current desktop app version: **1.4.0** (see `CHANGELOG.md`).
+Current desktop app version: **1.5.0** (see `CHANGELOG.md`).
 
 ---
 
@@ -53,7 +53,7 @@ Numbers will vary by library size and other apps running, but the goal is to sta
 
 You don’t need Node or npm to use the app – only if you want to develop it.
 
-1. Locate the installer in `dist/` (for example: `Music Setup 1.4.0.exe`).  
+1. Locate the installer in `dist/` (for example: `Music Setup 1.5.0.exe`).  
 2. Double‑click it and follow the installer steps.  
 3. Launch **Music** from the Start menu or desktop shortcut.
 

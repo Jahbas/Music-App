@@ -5,6 +5,14 @@ import { usePlayHistoryStore } from "../stores/playHistoryStore";
 import { useAudioSettingsStore } from "../stores/audioSettingsStore";
 import { trackDb } from "../db/db";
 
+/** Ignore AbortError from play() when interrupted by pause/load (e.g. during HMR). */
+const playIgnoringAbort = (audio: HTMLAudioElement): Promise<void> =>
+  audio.play().catch((err) => {
+    if (err?.name !== "AbortError") {
+      throw err;
+    }
+  });
+
 const getTrackUrl = async (trackId: string | null) => {
   if (!trackId) {
     return null;
@@ -46,8 +54,18 @@ type Lane = {
 let sharedAudioContext: AudioContext | null = null;
 
 function getAudioContext(): AudioContext {
+  if (import.meta.hot?.data?.audioContext) {
+    const ctx = import.meta.hot.data.audioContext as AudioContext;
+    if (ctx.state !== "closed") {
+      sharedAudioContext = ctx;
+      return ctx;
+    }
+  }
   if (!sharedAudioContext) {
     sharedAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  if (import.meta.hot?.data) {
+    import.meta.hot.data.audioContext = sharedAudioContext;
   }
   return sharedAudioContext;
 }
@@ -72,7 +90,9 @@ export const useAudio = () => {
   const { crossfadeEnabled, crossfadeMs, eqEnabled, eqBands, gaplessEnabled } = useAudioSettingsStore();
 
   const applyEqToLane = (lane: Lane) => {
-    const ctx = getAudioContext();
+    // Use the lane's own context so we never connect nodes from different contexts
+    // (e.g. after HMR when sharedAudioContext can be reset and recreated).
+    const ctx = lane.source.context;
 
     try {
       lane.source.disconnect();
@@ -225,7 +245,7 @@ export const useAudio = () => {
             if (ctx.state === "suspended") {
               await ctx.resume();
             }
-            await newAudio.play();
+            await playIgnoringAbort(newAudio);
           } catch {
           }
         })();
@@ -244,7 +264,7 @@ export const useAudio = () => {
       const repeat = usePlayerStore.getState().repeat;
       if (repeat === "track") {
         audio.currentTime = 0;
-        void audio.play();
+        void playIgnoringAbort(audio);
         return;
       }
       next();
@@ -291,7 +311,7 @@ export const useAudio = () => {
           if (ctx.state === "suspended") {
             void ctx.resume();
           }
-          await audio.play();
+          await playIgnoringAbort(audio);
         } catch {
         }
       }
@@ -332,7 +352,7 @@ export const useAudio = () => {
           audio.currentTime = targetTime;
         }
 
-        void audio.play();
+        void playIgnoringAbort(audio);
       } catch {
       }
     } else {
@@ -399,7 +419,7 @@ export const useAudio = () => {
           if (ctx.state === "suspended") {
             await ctx.resume();
           }
-          await inactive.audio.play();
+          await playIgnoringAbort(inactive.audio);
         } catch {
           isCrossfadingRef.current = false;
           return;

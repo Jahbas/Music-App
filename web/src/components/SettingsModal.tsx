@@ -12,7 +12,7 @@ import { useAudioSettingsStore } from "../stores/audioSettingsStore";
 import type { EqPresetId } from "../stores/audioSettingsStore";
 import { EqAdvancedGraph } from "./EqAdvancedGraph";
 import { exportSettingsToJson, importSettingsFromJson } from "../utils/settingsBackup";
-import { trackDb, playlistDb, imageDb, playHistoryDb, themeDb, folderDb, profileDb, profileLikesDb } from "../db/db";
+import { trackDb, playlistDb, imageDb, playHistoryDb, themeDb, profileDb, profileLikesDb, artistCacheDb, audioBlobDb, sharedTrackDb } from "../db/db";
 import {
   getExpandPlaylistsOnFolderPlay,
   setExpandPlaylistsOnFolderPlay,
@@ -20,7 +20,10 @@ import {
   setAutoPlayOnLoad,
   getTelemetryEnabled,
   setTelemetryEnabled,
+  getArtistDataPersistent,
+  setArtistDataPersistent,
 } from "../utils/preferences";
+import { useArtistStore } from "../stores/artistStore";
 import { ColorPicker } from "./ColorPicker";
 
 const OLED_UNLOCK_KEY = "oled-mode-unlocked";
@@ -70,7 +73,9 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const deleteThemeProfile = useThemeStore((state) => state.deleteProfile);
   const clearPlayHistory = usePlayHistoryStore((state) => state.clearPlayHistory);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
-  const [confirmDeleteAllData, setConfirmDeleteAllData] = useState(false);
+  const [confirmDeleteAllSongs, setConfirmDeleteAllSongs] = useState(false);
+  const [confirmClearArtistData, setConfirmClearArtistData] = useState(false);
+  const [artistDataPersistent, setArtistDataPersistentState] = useState(false);
   const [storageUsage, setStorageUsage] = useState<string | null>(null);
   const [dataInfoHover, setDataInfoHover] = useState(false);
   const [oledUnlocked, setOledUnlocked] = useState(false);
@@ -113,7 +118,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   useEffect(() => {
     if (!isOpen) {
       setConfirmClearHistory(false);
-      setConfirmDeleteAllData(false);
+      setConfirmDeleteAllSongs(false);
       return;
     }
     setActiveTab("general");
@@ -122,6 +127,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     setExpandPlaylistsOnFolderPlayState(getExpandPlaylistsOnFolderPlay());
     setAutoPlayOnLoadState(getAutoPlayOnLoad());
     setTelemetryEnabledState(getTelemetryEnabled());
+    setArtistDataPersistentState(getArtistDataPersistent());
+    setConfirmClearArtistData(false);
     const getStorageUsage = async () => {
       try {
         if (navigator.storage?.estimate) {
@@ -170,6 +177,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     navigate("/telemetry");
   };
 
+  const clearArtistCache = useArtistStore((s) => s.clearCache);
+
   const handleClearPlayHistory = async () => {
     if (!confirmClearHistory) {
       setConfirmClearHistory(true);
@@ -180,29 +189,47 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     onClose();
   };
 
-  const handleDeleteAllWebsiteData = async () => {
-    if (!confirmDeleteAllData) {
-      setConfirmDeleteAllData(true);
+  const handleClearArtistData = async () => {
+    if (!confirmClearArtistData) {
+      setConfirmClearArtistData(true);
       return;
     }
-    await trackDb.clear();
-    await playlistDb.clear();
-    await profileDb.clear();
-    await folderDb.clear();
-    await imageDb.clear();
-    await playHistoryDb.clear();
-    await profileLikesDb.clear();
-    await themeDb.clear();
-    await useLibraryStore.getState().hydrate();
-    await usePlaylistStore.getState().hydrate();
-    await useProfileStore.getState().hydrate();
-    await useFolderStore.getState().hydrate();
-    await usePlayHistoryStore.getState().hydrate();
-    await useProfileLikesStore.getState().hydrate();
-    useThemeStore.getState().resetTheme();
-    usePlayerStore.getState().clearQueue();
-    setConfirmDeleteAllData(false);
-    onClose();
+    await clearArtistCache();
+    await artistCacheDb.clear();
+    setConfirmClearArtistData(false);
+  };
+
+  const handleArtistDataPersistentChange = (value: boolean) => {
+    setArtistDataPersistent(value);
+    setArtistDataPersistentState(value);
+  };
+
+  const handleDeleteAllSongs = async () => {
+    if (!confirmDeleteAllSongs) {
+      setConfirmDeleteAllSongs(true);
+      return;
+    }
+    try {
+      await trackDb.clear();
+      // Keep playlists and folders; only clear song-related data
+      await imageDb.clear();
+      await playHistoryDb.clear();
+      await profileLikesDb.clear();
+      await artistCacheDb.clear();
+      await audioBlobDb.clear();
+      await sharedTrackDb.clear();
+      await useArtistStore.getState().clearCache();
+      await useLibraryStore.getState().hydrate();
+      await usePlaylistStore.getState().hydrate();
+      await useFolderStore.getState().hydrate();
+      await usePlayHistoryStore.getState().hydrate();
+      await useProfileLikesStore.getState().hydrate();
+      usePlayerStore.getState().clearQueue();
+      // Theme, profiles, playlists, and folders are not cleared.
+    } finally {
+      setConfirmDeleteAllSongs(false);
+      onClose();
+    }
   };
 
   const [confirmDeleteUnusedTracks, setConfirmDeleteUnusedTracks] = useState(false);
@@ -216,7 +243,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     const playerState = usePlayerStore.getState();
 
     const allTracks = libraryState.tracks;
-    const playlists = playlistState.playlists;
+    // Use DB as source of truth so every playlist is considered (including playlists in folders).
+    const playlists = await playlistDb.getAll();
 
     const usedTrackIds = new Set<string>();
     for (const playlist of playlists) {
@@ -248,6 +276,11 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       await libraryState.removeTrack(id);
     }
 
+    // Remove deleted track IDs from all playlists (including those in folders) so we don't leave stale references.
+    if (unusedTrackIds.length > 0) {
+      await playlistState.removeTrackIdsFromAllPlaylists(unusedTrackIds);
+    }
+
     setConfirmDeleteUnusedTracks(false);
     setLastUnusedDeleteCount(null);
     await libraryState.hydrate();
@@ -256,16 +289,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const openExternalUrl = (url: string) => {
     const trimmed = url.trim();
     if (!trimmed) return;
-    const api = window.electronAPI;
-    if (api?.openExternal) {
-      api.openExternal(trimmed);
-      return;
-    }
-    try {
-      window.open(trimmed, "_blank", "noopener,noreferrer");
-    } catch {
-      window.location.href = trimmed;
-    }
+    window.electronAPI?.openExternal(trimmed);
   };
 
   const handleOpenGitHubStar = () => {
@@ -311,7 +335,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           </button>
         </div>
         <p className="settings-description">
-          Records visits, listening time, pages, searches, and player actions. Data stays in your browser.
+          Records visits, listening time, pages, searches, and player actions. Data stays on your device.
         </p>
         <div className="settings-row">
           <span className="settings-row-label">Telemetry details</span>
@@ -623,7 +647,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           </button>
         </div>
         <p className="settings-description">
-          Best-effort to minimize gaps between tracks. Exact behavior may vary by file and browser.
+          Best-effort to minimize gaps between tracks. Exact behavior may vary by file and device.
         </p>
       </section>
 
@@ -744,8 +768,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           >
             <p className="settings-info-title">How your data is stored</p>
             <p className="settings-info-body">
-              All of your tracks, playlists, profiles, folders, images, play history, and settings are stored locally in
-              this browser. Nothing is sent to any server or cloud.
+              All of your tracks, playlists, profiles, folders, images, play history, and settings are stored locally in this app on your device. Nothing is sent to any server or cloud. This is not browser storage—it stays with the app.
             </p>
             {storageUsage != null && (
               <p className="settings-info-meta">
@@ -753,12 +776,12 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               </p>
             )}
             <p className="settings-info-footnote">
-              Clearing history or deleting website data only affects this browser profile on this device.
+              Clearing history or deleting data only affects this app on this device.
             </p>
           </div>
         )}
         <p className="settings-description">
-          Manage history and storage for this browser.
+          Manage history and storage for this app.
         </p>
         <div className="settings-row">
           <span className="settings-row-label">Export settings</span>
@@ -825,6 +848,37 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         <p className="settings-description">
           Imports settings from a JSON file created by Music on this device. Tracks and audio files are not included.
         </p>
+        <h4 className="settings-section-title" style={{ marginTop: "24px" }}>Artist data</h4>
+        <p className="settings-description">
+          Artist info and profile pictures are loaded from iTunes (images) and MusicBrainz (metadata). You can save them on this device or clear them.
+        </p>
+        <div className="settings-row">
+          <span className="settings-row-label">Persist artist data</span>
+          <button
+            type="button"
+            className={`${artistDataPersistent ? "primary-button" : "secondary-button"} settings-row-action`}
+            onClick={() => handleArtistDataPersistentChange(!artistDataPersistent)}
+            aria-pressed={artistDataPersistent}
+          >
+            {artistDataPersistent ? "On" : "Off"}
+          </button>
+        </div>
+        <p className="settings-description">
+          When on, fetched artist data is saved to this device and survives restarts. When off, it is only kept in memory.
+        </p>
+        <div className="settings-row">
+          <span className="settings-row-label">Cached artist data</span>
+          <button
+            type="button"
+            className={confirmClearArtistData ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
+            onClick={handleClearArtistData}
+          >
+            {confirmClearArtistData ? "Click again to clear" : "Clear cached artist data"}
+          </button>
+        </div>
+        <p className="settings-description">
+          Removes all cached artist info and profile pictures. You can load them again from the Artists view.
+        </p>
         <div className="modal-danger-zone">
           <div className="settings-row">
             <span className="settings-row-label">Play history</span>
@@ -857,17 +911,17 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             Removes tracks that are not in any playlist and not in the current queue. This cannot be undone.
           </p>
           <div className="settings-row">
-            <span className="settings-row-label">Delete all website data</span>
+            <span className="settings-row-label">Delete all songs</span>
             <button
               type="button"
-              className={confirmDeleteAllData ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
-              onClick={handleDeleteAllWebsiteData}
+              className={confirmDeleteAllSongs ? "danger-button settings-row-action" : "secondary-button settings-row-action"}
+              onClick={handleDeleteAllSongs}
             >
-              {confirmDeleteAllData ? "Click again to delete" : "Delete everything"}
+              {confirmDeleteAllSongs ? "Click again to delete" : "Delete all songs"}
             </button>
           </div>
           <p className="settings-description">
-            Removes tracks, playlists, profiles, folders, images, play history, and resets theme. The app will be empty.
+            Removes all tracks, playlists, folders, images, play history, and artist cache. Theme and settings are kept. This cannot be undone.
           </p>
         </div>
       </section>
@@ -879,30 +933,18 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       <section className="settings-section">
         <h4 className="settings-section-title">Support</h4>
         <p className="settings-description">
-          Support me for free! Choose where you like to listen.
+          Support the project for free!
         </p>
         <div className="settings-row">
-          <span className="settings-row-label">Website player</span>
-          <button
-            type="button"
-            className="secondary-button settings-row-action support-rainbow-button"
-            onClick={handleOpenGitHubStar}
-            title={GITHUB_REPO_URL}
-            aria-label="Open the website player repository"
-          >
-            Website player
-          </button>
-        </div>
-        <div className="settings-row">
-          <span className="settings-row-label">Desktop player</span>
+          <span className="settings-row-label">Source / repo</span>
           <button
             type="button"
             className="secondary-button settings-row-action support-rainbow-button"
             onClick={handleOpenGitHubElectronRepo}
             title={GITHUB_ELECTRON_REPO_URL}
-            aria-label="Open the desktop player repository"
+            aria-label="Open the app repository"
           >
-            Desktop player
+            Open repository
           </button>
         </div>
       </section>

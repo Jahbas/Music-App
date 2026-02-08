@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { usePlaylistStore } from "../stores/playlistStore";
 import { useFolderStore } from "../stores/folderStore";
 import { useLibraryStore } from "../stores/libraryStore";
+import { usePlayerStore } from "../stores/playerStore";
+import { useArtistStore } from "../stores/artistStore";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { EditPlaylistModal } from "./EditPlaylistModal";
 import { CreateFolderModal } from "./CreateFolderModal";
@@ -10,7 +12,14 @@ import { EditFolderModal } from "./EditFolderModal";
 import { useImageUrl } from "../hooks/useImageUrl";
 import type { DragContext } from "../hooks/useDragContext";
 import type { Playlist, PlaylistFolder } from "../types";
-import { getFilesFromDataTransfer } from "../utils/folderDrop";
+import {
+  getFilesFromDataTransfer,
+  getAudioFileHandlesFromDirectory,
+  getDirectSubdirectoryHandles,
+  buildFolderImportPreview,
+  type FolderImportPreviewEntry,
+} from "../utils/folderDrop";
+import { FolderImportPreviewModal } from "./FolderImportPreviewModal";
 
 function sortPlaylists(playlists: Playlist[]): Playlist[] {
   return [...playlists].sort((a, b) => {
@@ -22,6 +31,53 @@ function sortPlaylists(playlists: Playlist[]): Playlist[] {
     if (aOrder !== bOrder) return aOrder - bOrder;
     return (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.name.localeCompare(b.name);
   });
+}
+
+type SidebarArtistsButtonProps = { onNavigate: (path: string) => void };
+
+function SidebarArtistsButton({ onNavigate }: SidebarArtistsButtonProps) {
+  const tracks = useLibraryStore((s) => s.tracks);
+  const currentTrackId = usePlayerStore((s) => s.currentTrackId);
+  const getCached = useArtistStore((s) => s.getCached);
+  const fetchArtist = useArtistStore((s) => s.fetchArtist);
+
+  const currentTrack = useMemo(
+    () => tracks.find((t) => t.id === currentTrackId),
+    [tracks, currentTrackId]
+  );
+  const artistName = currentTrack?.artist?.trim();
+  const artistInfo = artistName ? getCached(artistName) : null;
+  const artistImageUrl = artistInfo?.imageUrl ?? null;
+
+  useEffect(() => {
+    if (artistName && artistName.toLowerCase() !== "unknown artist" && getCached(artistName) === undefined) {
+      void fetchArtist(artistName);
+    }
+  }, [artistName, fetchArtist, getCached]);
+
+  return (
+    <button
+      type="button"
+      className="sidebar-artists-button"
+      onClick={() => onNavigate("/artists")}
+      title="Artists"
+      aria-label="Open Artists"
+    >
+      <div className="sidebar-artists-button-avatar">
+        {artistImageUrl ? (
+          <img src={artistImageUrl} alt="" />
+        ) : (
+          <span className="sidebar-artists-button-avatar-placeholder" aria-hidden>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z" />
+              <path d="M4 10a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2" />
+            </svg>
+          </span>
+        )}
+      </div>
+      <span className="sidebar-artists-button-label">Artists</span>
+    </button>
+  );
 }
 
 function sortFolders(folders: PlaylistFolder[]): PlaylistFolder[] {
@@ -152,6 +208,8 @@ type SidebarFolderRowProps = {
   onPlaylistDrop?: (playlistId: string, folderId: string) => void;
   onFolderContextMenu?: (folder: PlaylistFolder, e: React.MouseEvent) => void;
   onPlaylistContextMenu?: (playlist: Playlist, e: React.MouseEvent) => void;
+  onPlaylistDragStart?: (playlistId: string) => void;
+  onPlaylistDragEnd?: () => void;
 };
 
 function SidebarFolderRow({
@@ -167,6 +225,8 @@ function SidebarFolderRow({
   onPlaylistDrop,
   onFolderContextMenu,
   onPlaylistContextMenu,
+  onPlaylistDragStart,
+  onPlaylistDragEnd,
 }: SidebarFolderRowProps) {
   const iconUrl = useImageUrl(folder.iconImageId);
   const bannerUrl = useImageUrl(folder.bannerImageId);
@@ -296,6 +356,8 @@ function SidebarFolderRow({
               onNavigate={onNavigate}
               onEdit={onPlaylistEdit}
               indent
+              onDragStart={onPlaylistDragStart}
+              onDragEnd={onPlaylistDragEnd}
               onContextMenu={(e) => onPlaylistContextMenu?.(playlist, e)}
             />
           ))}
@@ -313,6 +375,7 @@ type SidebarProps = {
 export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
   const addFiles = useLibraryStore((state) => state.addFiles);
   const addFileHandles = useLibraryStore((state) => state.addFileHandles);
+  const addFilePaths = useLibraryStore((state) => state.addFilePaths);
   const playlists = usePlaylistStore((state) => state.playlists);
   const folders = useFolderStore((state) => state.folders);
   const createPlaylist = usePlaylistStore((state) => state.createPlaylist);
@@ -335,6 +398,9 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
   const [foldersContextMenu, setFoldersContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [playlistRowContextMenu, setPlaylistRowContextMenu] = useState<{ x: number; y: number; playlist: Playlist | null } | null>(null);
   const [folderRowContextMenu, setFolderRowContextMenu] = useState<{ x: number; y: number; folder: PlaylistFolder } | null>(null);
+  const [folderImportPreviewRoots, setFolderImportPreviewRoots] = useState<Awaited<ReturnType<typeof buildFolderImportPreview>> | null>(null);
+  const [folderImportPreviewOpen, setFolderImportPreviewOpen] = useState(false);
+  const [folderImportPending, setFolderImportPending] = useState<{ targetFolderId: string | undefined; looseFiles: File[] } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const isAnyContextMenuOpen =
@@ -449,12 +515,11 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
   const processFileDrop = async (
     result: NonNullable<Awaited<ReturnType<typeof getFilesFromDataTransfer>>>
   ): Promise<string[]> => {
-    if (result.kind === "folder") {
-      if (result.fileHandles.length === 0) return [];
-      return addFileHandles(result.fileHandles);
+    if (result.kind === "files") {
+      if (result.files.length === 0) return [];
+      return addFiles(result.files);
     }
-    if (result.files.length === 0) return [];
-    return addFiles(result.files);
+    return [];
   };
 
   const handlePlaylistDrop = async (playlistId: string, folderId: string | null) => {
@@ -511,11 +576,65 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
     if (!result) return;
 
     if (result.kind === "folder") {
-      const trackIds = await processFileDrop(result);
-      if (trackIds.length > 0) {
-        const playlist = await createPlaylist({ name: result.folderName });
-        await addTracksToPlaylist(playlist.id, trackIds);
-        onNavigate(`/playlist/${playlist.id}`);
+      const targetFolderId = folderId ?? undefined;
+      const roots = await buildFolderImportPreview(result);
+      const totalPlaylists = roots.reduce((acc, r) => acc + r.entries.length, 0);
+
+      if (totalPlaylists > 1) {
+        setFolderImportPreviewRoots(roots);
+        setFolderImportPending({ targetFolderId, looseFiles: result.files });
+        setFolderImportPreviewOpen(true);
+        return;
+      }
+
+      let firstPlaylistId: string | null = null;
+      const basename = (p: string) => p.replace(/^.*[/\\]/, "") || p;
+
+      if (result.directoryHandles.length > 0) {
+        for (const dir of result.directoryHandles) {
+          const subdirs = await getDirectSubdirectoryHandles(dir);
+          const toProcess: { name: string; getHandles: () => Promise<FileSystemFileHandle[]> }[] =
+            subdirs.length > 0
+              ? subdirs.map((sub) => ({
+                  name: sub.name,
+                  getHandles: () => getAudioFileHandlesFromDirectory(sub),
+                }))
+              : [{ name: dir.name, getHandles: () => getAudioFileHandlesFromDirectory(dir) }];
+          for (const { name, getHandles } of toProcess) {
+            const handles = await getHandles();
+            const trackIds = handles.length > 0 ? await addFileHandles(handles) : [];
+            const playlist = await createPlaylist({ name });
+            if (trackIds.length > 0) await addTracksToPlaylist(playlist.id, trackIds);
+            if (!firstPlaylistId) firstPlaylistId = playlist.id;
+          }
+        }
+      } else if (result.directoryPaths?.length && window.electronAPI?.listAudioPaths) {
+        const listSubdirs = window.electronAPI.listDirectSubdirectories;
+        for (const dir of result.directoryPaths) {
+          const subdirPaths = listSubdirs ? await listSubdirs(dir.path) : [];
+          const toProcess: { name: string; path: string }[] =
+            subdirPaths.length > 0
+              ? subdirPaths.map((p) => ({ name: basename(p), path: p }))
+              : [{ name: dir.name, path: dir.path }];
+          for (const { name, path: dirPath } of toProcess) {
+            const paths = await window.electronAPI.listAudioPaths(dirPath);
+            const trackIds = paths.length > 0 ? await addFilePaths(paths) : [];
+            const playlist = await createPlaylist({ name });
+            if (trackIds.length > 0) await addTracksToPlaylist(playlist.id, trackIds);
+            if (!firstPlaylistId) firstPlaylistId = playlist.id;
+          }
+        }
+      }
+
+      if (result.files.length > 0) {
+        const looseTrackIds = await addFiles(result.files);
+        if (firstPlaylistId && looseTrackIds.length > 0) {
+          await addTracksToPlaylist(firstPlaylistId, looseTrackIds);
+        }
+      }
+
+      if (firstPlaylistId) {
+        onNavigate(`/playlist/${firstPlaylistId}`);
       }
       return;
     }
@@ -534,151 +653,177 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
       onDrop={handleSidebarDrop}
     >
       <div className="sidebar-actions">
+        <div className="sidebar-actions-row">
+          <button
+            type="button"
+            className="sidebar-action-icon"
+            onClick={() => setIsFolderModalOpen(true)}
+            title="Create folder"
+            aria-label="Create folder"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              <line x1="12" y1="11" x2="12" y2="17" />
+              <line x1="9" y1="14" x2="15" y2="14" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="sidebar-action-icon"
+            onClick={() => setIsPlaylistModalOpen(true)}
+            title="Create playlist"
+            aria-label="Create playlist"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 6h10M4 12h10M4 18h10" />
+              <line x1="18" y1="8" x2="22" y2="8" />
+              <line x1="20" y1="6" x2="20" y2="10" />
+            </svg>
+          </button>
+        </div>
         <button
-          className="secondary-button"
-          onClick={() => setIsPlaylistModalOpen(true)}
+          type="button"
+          className="sidebar-liked-button"
+          onClick={() => onNavigate("/liked")}
+          title="Liked Songs"
+          aria-label="Liked Songs"
         >
-          Create playlist
-        </button>
-        <button
-          className="secondary-button"
-          onClick={() => setIsFolderModalOpen(true)}
-        >
-          Create folder
+          <span className="sidebar-liked-icon" aria-hidden>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+          </span>
+          <span className="sidebar-liked-label">Liked Songs</span>
         </button>
       </div>
       <div
-        className={`sidebar-section ${foldersCollapsed ? "sidebar-section--collapsed" : ""} ${dragOverSection ? "sidebar-section--drag-over" : ""}`}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setFoldersContextMenu({ x: e.clientX, y: e.clientY });
-        }}
+        className="sidebar-scroll"
+        role="region"
+        aria-label="Library navigation"
       >
-        <button
-          type="button"
-          className="sidebar-section-header"
-          onClick={() => setFoldersCollapsed((prev) => !prev)}
-          aria-expanded={!foldersCollapsed}
+        <div
+          className={`sidebar-section ${foldersCollapsed ? "sidebar-section--collapsed" : ""} ${dragOverSection ? "sidebar-section--drag-over" : ""}`}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setFoldersContextMenu({ x: e.clientX, y: e.clientY });
+          }}
         >
-          <span className="sidebar-section-title">Folders</span>
-          <span
-            className={`sidebar-section-chevron ${foldersCollapsed ? "sidebar-section-chevron--collapsed" : ""}`}
-            aria-hidden
+          <button
+            type="button"
+            className="sidebar-section-header"
+            onClick={() => setFoldersCollapsed((prev) => !prev)}
+            aria-expanded={!foldersCollapsed}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <span className="sidebar-section-title">Folders</span>
+            <span
+              className={`sidebar-section-chevron ${foldersCollapsed ? "sidebar-section-chevron--collapsed" : ""}`}
+              aria-hidden
             >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </span>
-        </button>
-        {!foldersCollapsed && (
-          <div className="sidebar-playlists">
-            {sortedFolders.map((folder) => (
-              <SidebarFolderRow
-                key={folder.id}
-                folder={folder}
-                playlists={playlists}
-                isExpanded={expandedFolders.has(folder.id)}
-                onToggleExpand={() => toggleFolderExpanded(folder.id)}
-                isDragOver={dragOverFolderId === folder.id}
-                onNavigate={onNavigate}
-                onEdit={setEditingFolder}
-                onPlaylistEdit={setEditingPlaylist}
-                dragOverPlaylistId={dragOverPlaylistId}
-                onPlaylistDrop={handlePlaylistDrop}
-                onFolderContextMenu={(f, e) =>
-                  setFolderRowContextMenu({ x: e.clientX, y: e.clientY, folder: f })
-                }
-                onPlaylistContextMenu={(playlist, e) =>
-                  setPlaylistRowContextMenu({
-                    x: e.clientX,
-                    y: e.clientY,
-                    playlist,
-                  })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
-      <div
-        className={`sidebar-section sidebar-section--fill ${playlistsCollapsed ? "sidebar-section--collapsed" : ""} ${dragOverSection ? "sidebar-section--drag-over" : ""}`}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setPlaylistsContextMenu({ x: e.clientX, y: e.clientY });
-        }}
-      >
-        <button
-          type="button"
-          className="sidebar-section-header"
-          onClick={() => setPlaylistsCollapsed((prev) => !prev)}
-          aria-expanded={!playlistsCollapsed}
-        >
-          <span className="sidebar-section-title">Playlists</span>
-          <span
-            className={`sidebar-section-chevron ${playlistsCollapsed ? "sidebar-section-chevron--collapsed" : ""}`}
-            aria-hidden
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </span>
-        </button>
-        {!playlistsCollapsed && (
-          <div className="sidebar-playlists">
-            <div
-              className="sidebar-playlist"
-              onClick={() => onNavigate("/liked")}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setPlaylistRowContextMenu({ x: e.clientX, y: e.clientY, playlist: null });
-              }}
-            >
-              <span className="playlist-name" title="Liked Songs">
-                Liked Songs
-              </span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </button>
+          {!foldersCollapsed && (
+            <div className="sidebar-playlists">
+              {sortedFolders.map((folder) => (
+                <SidebarFolderRow
+                  key={folder.id}
+                  folder={folder}
+                  playlists={playlists}
+                  isExpanded={expandedFolders.has(folder.id)}
+                  onToggleExpand={() => toggleFolderExpanded(folder.id)}
+                  isDragOver={dragOverFolderId === folder.id}
+                  onNavigate={onNavigate}
+                  onEdit={setEditingFolder}
+                  onPlaylistEdit={setEditingPlaylist}
+                  dragOverPlaylistId={dragOverPlaylistId}
+                  onPlaylistDrop={handlePlaylistDrop}
+                  onPlaylistDragStart={setDraggingPlaylistId}
+                  onPlaylistDragEnd={() => setDraggingPlaylistId(null)}
+                  onFolderContextMenu={(f, e) =>
+                    setFolderRowContextMenu({ x: e.clientX, y: e.clientY, folder: f })
+                  }
+                  onPlaylistContextMenu={(playlist, e) =>
+                    setPlaylistRowContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      playlist,
+                    })
+                  }
+                />
+              ))}
             </div>
-            {playlistsWithoutFolder.map((playlist) => (
-              <SidebarPlaylistRow
-                key={playlist.id}
-                playlist={playlist}
-                isDragOver={dragOverPlaylistId === playlist.id}
-                onNavigate={onNavigate}
-                onEdit={setEditingPlaylist}
-                onDragStart={setDraggingPlaylistId}
-                onDragEnd={() => setDraggingPlaylistId(null)}
-                onContextMenu={(e) =>
-                  setPlaylistRowContextMenu({
-                    x: e.clientX,
-                    y: e.clientY,
-                    playlist,
-                  })
-                }
-              />
-            ))}
-          </div>
-        )}
+          )}
+        </div>
+        <div
+          className={`sidebar-section sidebar-section--fill ${playlistsCollapsed ? "sidebar-section--collapsed" : ""} ${dragOverSection ? "sidebar-section--drag-over" : ""}`}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setPlaylistsContextMenu({ x: e.clientX, y: e.clientY });
+          }}
+        >
+          <button
+            type="button"
+            className="sidebar-section-header"
+            onClick={() => setPlaylistsCollapsed((prev) => !prev)}
+            aria-expanded={!playlistsCollapsed}
+          >
+            <span className="sidebar-section-title">Playlists</span>
+            <span
+              className={`sidebar-section-chevron ${playlistsCollapsed ? "sidebar-section-chevron--collapsed" : ""}`}
+              aria-hidden
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </button>
+          {!playlistsCollapsed && (
+            <div className="sidebar-playlists">
+              {playlistsWithoutFolder.map((playlist) => (
+                <SidebarPlaylistRow
+                  key={playlist.id}
+                  playlist={playlist}
+                  isDragOver={dragOverPlaylistId === playlist.id}
+                  onNavigate={onNavigate}
+                  onEdit={setEditingPlaylist}
+                  onDragStart={setDraggingPlaylistId}
+                  onDragEnd={() => setDraggingPlaylistId(null)}
+                  onContextMenu={(e) =>
+                    setPlaylistRowContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      playlist,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+      <SidebarArtistsButton onNavigate={onNavigate} />
       {playlistsContextMenu &&
         createPortal(
           <div
@@ -818,6 +963,40 @@ export const Sidebar = ({ dragContext, onNavigate }: SidebarProps) => {
         onClose={() => setEditingFolder(null)}
         folder={editingFolder}
         onDeleted={() => setEditingFolder(null)}
+      />
+      <FolderImportPreviewModal
+        isOpen={folderImportPreviewOpen}
+        onClose={() => {
+          setFolderImportPreviewOpen(false);
+          setFolderImportPreviewRoots(null);
+          setFolderImportPending(null);
+        }}
+        roots={folderImportPreviewRoots ?? []}
+        looseFilesCount={folderImportPending?.looseFiles.length ?? 0}
+        onConfirm={async (entries: FolderImportPreviewEntry[]) => {
+          const pending = folderImportPending;
+          if (!pending) return;
+          let firstPlaylistId: string | null = null;
+          for (const entry of entries) {
+            const trackIds = entry.getHandles
+              ? await addFileHandles(await entry.getHandles())
+              : entry.getPaths
+                ? await addFilePaths(await entry.getPaths())
+                : [];
+            const playlist = await createPlaylist({
+              name: entry.displayName,
+            });
+            if (trackIds.length > 0) await addTracksToPlaylist(playlist.id, trackIds);
+            if (!firstPlaylistId) firstPlaylistId = playlist.id;
+          }
+          if (pending.looseFiles.length > 0) {
+            const looseTrackIds = await addFiles(pending.looseFiles);
+            if (firstPlaylistId && looseTrackIds.length > 0) {
+              await addTracksToPlaylist(firstPlaylistId, looseTrackIds);
+            }
+          }
+          if (firstPlaylistId) onNavigate(`/playlist/${firstPlaylistId}`);
+        }}
       />
     </aside>
   );

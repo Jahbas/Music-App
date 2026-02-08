@@ -3,6 +3,7 @@ import { imageDb, trackDb } from "../db/db";
 import type { Track } from "../types";
 import { fileToTrack, isSupportedAudioFile } from "../utils/track";
 import { useProfileLikesStore } from "./profileLikesStore";
+import { useLikedToastStore } from "./likedToastStore";
 
 export type AddProgress = {
   total: number;
@@ -265,11 +266,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           await new Promise((r) => setTimeout(r, 0));
           continue;
         }
-        const { track, artworkBlob } = await fileToTrack(
-          file,
-          "handle",
-          handle
-        );
+        // Store as blob so tracks persist after refresh (file handles lose permission).
+        const { track, artworkBlob } = await fileToTrack(file, "blob");
         if (artworkBlob) {
           const artworkId = crypto.randomUUID();
           const compressed = await compressArtwork(artworkBlob);
@@ -299,8 +297,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ tracks: [] });
   },
   toggleTrackLiked: async (id) => {
-    const { toggle } = useProfileLikesStore.getState();
+    const { toggle, isLiked } = useProfileLikesStore.getState();
+    const wasLiked = isLiked(id);
     await toggle(id);
+    useLikedToastStore.getState().show(id, !wasLiked);
   },
   setTrackTags: async (id, tags) => {
     const cleaned = Array.from(
