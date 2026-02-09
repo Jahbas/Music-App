@@ -28,6 +28,7 @@ import {
   setAutoUpdateEnabled,
 } from "../utils/preferences";
 import { useArtistStore } from "../stores/artistStore";
+import { KeybindsTab } from "./KeybindsTab";
 import { ColorPicker } from "./ColorPicker";
 import { useUpdateStore } from "../stores/updateStore";
 
@@ -75,7 +76,7 @@ type SettingsModalProps = {
 };
 
 export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
-  type SettingsTabId = "general" | "appearance" | "profiles" | "audio" | "player" | "data" | "support";
+  type SettingsTabId = "general" | "appearance" | "profiles" | "audio" | "player" | "keybinds" | "data" | "support";
 
   const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: "general", label: "General" },
@@ -83,6 +84,7 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     { id: "profiles", label: "Profiles" },
     { id: "audio", label: "Audio" },
     { id: "player", label: "Player" },
+    { id: "keybinds", label: "Keybinds" },
     { id: "data", label: "Data & privacy" },
     { id: "support", label: "Support" },
   ];
@@ -1140,6 +1142,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     content = renderPlayerTab();
   } else if (activeTab === "data") {
     content = renderDataTab();
+  } else if (activeTab === "keybinds") {
+    content = <KeybindsTab />;
   } else {
     content = renderSupportTab();
   }

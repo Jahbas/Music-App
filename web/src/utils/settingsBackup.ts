@@ -3,6 +3,7 @@ import { useAudioSettingsStore } from "../stores/audioSettingsStore";
 import { usePlayerStore } from "../stores/playerStore";
 import { usePlaylistStore } from "../stores/playlistStore";
 import { useFolderStore } from "../stores/folderStore";
+import { useKeybindStore } from "../stores/keybindStore";
 
 type ExportedSettings = {
   version: 1;
@@ -27,6 +28,7 @@ type ExportedSettings = {
     volume: number;
     playbackRate: number;
   };
+  keybinds?: Record<string, string[]>;
   structure: {
     folders: Array<{
       id: string;
@@ -51,6 +53,7 @@ export function exportSettingsToJson(): string {
   const playerState = usePlayerStore.getState();
   const playlistState = usePlaylistStore.getState();
   const folderState = useFolderStore.getState();
+  const keybindState = useKeybindStore.getState();
 
   const payload: ExportedSettings = {
     version: 1,
@@ -75,6 +78,7 @@ export function exportSettingsToJson(): string {
       volume: playerState.volume,
       playbackRate: playerState.playbackRate,
     },
+    keybinds: keybindState.keybinds as Record<string, string[]>,
     structure: {
       folders: folderState.folders.map((folder) => ({
         id: folder.id,
@@ -107,6 +111,7 @@ export async function importSettingsFromJson(json: string): Promise<void> {
   const playerState = usePlayerStore.getState();
   const playlistState = usePlaylistStore.getState();
   const folderState = useFolderStore.getState();
+  const keybindState = useKeybindStore.getState();
 
   themeState.setMode(parsed.theme.mode as any);
   themeState.setAccent(parsed.theme.accent);
@@ -124,6 +129,10 @@ export async function importSettingsFromJson(json: string): Promise<void> {
   playerState.setRepeat(parsed.player.repeat as any);
   playerState.setVolume(parsed.player.volume);
   playerState.setPlaybackRate(parsed.player.playbackRate);
+
+  if (parsed.keybinds) {
+    keybindState.replaceAll(parsed.keybinds);
+  }
 
   if (parsed.structure.folders.length > 0) {
     const existingFoldersById = new Map(folderState.folders.map((f) => [f.id, f]));

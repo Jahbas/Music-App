@@ -2,7 +2,7 @@
 
 A slick, local‑first desktop music player focused on **fast startup, low memory usage and a clean Windows‑native feel**.
 
-Current desktop app version: **1.5.0** (see `CHANGELOG.md`).
+Current desktop app version: **1.7.1** (see `CHANGELOG.md`).
 
 ---
 

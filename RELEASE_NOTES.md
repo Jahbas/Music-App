@@ -8,6 +8,12 @@ section for the new version into the release body so the in‑app
 update preview shows the same text.
 -->
 
+## 1.7.1 – Keybinds tab & tray fix
+
+- Added a new **Keybinds** tab in Settings where you can configure keyboard shortcuts for playback (play/pause, next/previous, volume, shuffle, repeat, and search), stored per profile and exported/imported with settings.
+- Shortcuts now use a dedicated capture UI: press a key combination to assign it, or hit **Esc** while capturing to clear the binding for that action.
+- Improved the desktop tray icon so **left‑click reliably toggles and focuses the main window** instead of only opening the tray menu.
+
 ## 1.7.0 – Desktop updater & version info
 
 - Added an opt‑in desktop updater in Settings that can check GitHub for new Windows builds and install them directly from the app.

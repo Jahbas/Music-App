@@ -54,10 +54,25 @@ export type Playlist = {
   watchPath?: string;
 };
 
+export type KeybindAction =
+  | "playPause"
+  | "nextTrack"
+  | "previousTrack"
+  | "volumeUp"
+  | "volumeDown"
+  | "toggleShuffle"
+  | "cycleRepeat"
+  | "openSearchOverlay";
+
+export type KeyCombo = string;
+
+export type KeybindMap = Partial<Record<KeybindAction, KeyCombo[]>>;
+
 export type Profile = {
   id: string;
   name: string;
   createdAt: number;
+  keybinds?: KeybindMap;
 };
 
 export type PlaylistFolder = {

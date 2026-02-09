@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePlayerStore } from "../stores/playerStore";
+import { useKeybindStore } from "../stores/keybindStore";
+import type { KeybindAction } from "../types";
+import { normalizeKeyComboFromEvent } from "../utils/keybinds";
 
 export const useShortcuts = () => {
   const navigate = useNavigate();
@@ -13,6 +16,7 @@ export const useShortcuts = () => {
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
   const volume = usePlayerStore((s) => s.volume);
   const setVolume = usePlayerStore((s) => s.setVolume);
+  const keybinds = useKeybindStore((s) => s.keybinds);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -23,72 +27,54 @@ export const useShortcuts = () => {
         target.isContentEditable;
       if (isInput) return;
 
-      if (event.code === "Space") {
+      const combo = normalizeKeyComboFromEvent(event);
+      if (!combo) return;
+
+      const matchedActions: KeybindAction[] = [];
+      for (const [action, combos] of Object.entries(keybinds) as [KeybindAction, string[]][]) {
+        if (Array.isArray(combos) && combos.includes(combo)) {
+          matchedActions.push(action);
+        }
+      }
+
+      if (matchedActions.length === 0) {
+        return;
+      }
+
+      const shouldPreventDefault = matchedActions.some((action) =>
+        action === "playPause" ||
+        action === "volumeUp" ||
+        action === "volumeDown" ||
+        action === "openSearchOverlay"
+      );
+      if (shouldPreventDefault) {
         event.preventDefault();
-        togglePlay();
-        return;
       }
-      if (event.code === "ArrowUp") {
-        event.preventDefault();
-        setVolume(Math.min(1, volume + 0.05));
-        return;
-      }
-      if (event.code === "ArrowDown") {
-        event.preventDefault();
-        setVolume(Math.max(0, volume - 0.05));
-        return;
-      }
-      if (event.key === "n" || event.key === "N") {
-        next();
-        return;
-      }
-      if (event.key === "p" || event.key === "P") {
-        previous();
-        return;
-      }
-      if (event.key === "s" || event.key === "S") {
-        toggleShuffle();
-        return;
-      }
-      if (event.key === "r" || event.key === "R") {
-        cycleRepeat();
-        return;
-      }
-      if (event.key === "/") {
-        event.preventDefault();
-        // Open the global search overlay instead of navigating to the search view
-        window.dispatchEvent(new CustomEvent("open-global-search"));
-        return;
-      }
-      if (event.key === "g" || event.key === "G") {
-        // simple `g`-based navigation: GL library, GK liked, GS search
-        const listener = (e: KeyboardEvent) => {
-          if (e.key === "l" || e.key === "L") {
-            navigate("/");
-          } else if (e.key === "k" || e.key === "K") {
-            navigate("/liked");
-          } else if (e.key === "s" || e.key === "S") {
-            navigate("/search");
-          }
-          window.removeEventListener("keydown", listener, true);
-        };
-        window.addEventListener("keydown", listener, true);
+
+      for (const action of matchedActions) {
+        if (action === "playPause") {
+          togglePlay();
+        } else if (action === "nextTrack") {
+          next();
+        } else if (action === "previousTrack") {
+          previous();
+        } else if (action === "volumeUp") {
+          setVolume(Math.min(1, volume + 0.05));
+        } else if (action === "volumeDown") {
+          setVolume(Math.max(0, volume - 0.05));
+        } else if (action === "toggleShuffle") {
+          toggleShuffle();
+        } else if (action === "cycleRepeat") {
+          cycleRepeat();
+        } else if (action === "openSearchOverlay") {
+          // Open the global search overlay instead of navigating to the search view
+          window.dispatchEvent(new CustomEvent("open-global-search"));
+        }
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [
-    navigate,
-    togglePlay,
-    next,
-    previous,
-    shuffle,
-    toggleShuffle,
-    repeat,
-    cycleRepeat,
-    volume,
-    setVolume,
-  ]);
+  }, [navigate, togglePlay, next, previous, toggleShuffle, cycleRepeat, volume, setVolume, keybinds]);
 };
 

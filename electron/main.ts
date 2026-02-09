@@ -313,8 +313,33 @@ app.whenReady().then(() => {
   const trayIconPath = process.platform === 'win32' ? getIconPath('app.ico') : getIconPath('app.png');
   tray = new Tray(trayIconPath);
   tray.setToolTip('Music');
+
+  // Left-click: toggle/show the main window so it always does something obvious.
   tray.on('click', () => {
-    showTrayMenuWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createMainWindow();
+      return;
+    }
+
+    // If the window is hidden or minimized, bring it back and focus it.
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+      return;
+    }
+
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+      mainWindow.focus();
+      return;
+    }
+
+    // When visible: respect "minimize to tray" by hiding instead of closing.
+    if (minimizeToTray) {
+      mainWindow.hide();
+    } else {
+      mainWindow.focus();
+    }
   });
 
   function buildTrayContextMenu() {
