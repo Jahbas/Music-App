@@ -99,6 +99,7 @@ export const useAudio = () => {
   const previousPlayRef = useRef<{ trackId: string; startedAt: number } | null>(null);
   const gaplessPreloadedRef = useRef<{ laneKey: "a" | "b"; trackId: string } | null>(null);
   const currentTrackId = usePlayerStore((state) => state.currentTrackId);
+  const libraryIsLoading = useLibraryStore((state) => state.isLoading);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const volume = usePlayerStore((state) => state.volume);
   const playbackRate = usePlayerStore((state) => state.playbackRate);
@@ -355,7 +356,7 @@ export const useAudio = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentTrackId, addPlay]);
+  }, [currentTrackId, addPlay, libraryIsLoading]);
 
   useEffect(() => {
     const lane = getActiveLane();

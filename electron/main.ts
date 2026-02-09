@@ -5,7 +5,6 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import * as mm from 'music-metadata';
-
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let minimizeToTray = false;
@@ -588,6 +587,170 @@ ipcMain.handle('fetch-deezer-url', async (_event, requestUrl: string) => {
     return { ok: res.ok, status: res.status, body };
   } catch {
     return { ok: false, status: 0, body: null };
+  }
+});
+
+type UpdateInfo = {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  notesPreview: string | null;
+  fullNotes: string | null;
+  downloadUrl: string | null;
+  releaseUrl: string | null;
+  error?: string;
+};
+
+const GITHUB_ELECTRON_REPO = 'Jahbas/Music-App';
+const GITHUB_RELEASES_LATEST_URL = `https://api.github.com/repos/${GITHUB_ELECTRON_REPO}/releases/latest`;
+
+function normalizeVersion(raw: string): [number, number, number] {
+  const cleaned = raw.replace(/^v/i, '').trim();
+  const parts = cleaned.split('.').map((p) => Number.parseInt(p, 10));
+  const [major, minor, patch] = [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  return [major, minor, patch];
+}
+
+function isNewerVersion(current: string, latest: string): boolean {
+  const [cMaj, cMin, cPatch] = normalizeVersion(current);
+  const [lMaj, lMin, lPatch] = normalizeVersion(latest);
+  if (lMaj !== cMaj) return lMaj > cMaj;
+  if (lMin !== cMin) return lMin > cMin;
+  return lPatch > cPatch;
+}
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
+ipcMain.handle('check-for-updates', async (): Promise<UpdateInfo> => {
+  const currentVersion = app.getVersion();
+  try {
+    const res = await fetch(GITHUB_RELEASES_LATEST_URL, {
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'Music-App-Updater',
+      },
+    });
+    if (!res.ok) {
+      return {
+        currentVersion,
+        latestVersion: currentVersion,
+        hasUpdate: false,
+        notesPreview: null,
+        fullNotes: null,
+        downloadUrl: null,
+        releaseUrl: null,
+        error: `GitHub responded with ${res.status}`,
+      };
+    }
+
+    const json = (await res.json()) as {
+      tag_name?: string;
+      name?: string;
+      body?: string | null;
+      html_url?: string;
+      assets?: { name?: string; browser_download_url?: string | null }[];
+    };
+
+    const tag = (json.tag_name || json.name || currentVersion).trim();
+    const latestVersion = tag || currentVersion;
+    const hasUpdate = isNewerVersion(currentVersion, latestVersion);
+
+    const body = (json.body ?? '').trim();
+    const MAX_PREVIEW_LENGTH = 600;
+    const notesPreview =
+      body.length > 0
+        ? body.length > MAX_PREVIEW_LENGTH
+          ? `${body.slice(0, MAX_PREVIEW_LENGTH)}…`
+          : body
+        : null;
+
+    const assets = Array.isArray(json.assets) ? json.assets : [];
+    const windowsAsset = assets.find((asset) => {
+      const name = (asset.name || '').toLowerCase();
+      return name.endsWith('.exe') || name.endsWith('.msi');
+    });
+
+    const downloadUrl =
+      windowsAsset && typeof windowsAsset.browser_download_url === 'string'
+        ? windowsAsset.browser_download_url
+        : null;
+
+    return {
+      currentVersion,
+      latestVersion,
+      hasUpdate,
+      notesPreview,
+      fullNotes: body || null,
+      downloadUrl,
+      releaseUrl: json.html_url ?? null,
+    };
+  } catch (error) {
+    return {
+      currentVersion,
+      latestVersion: currentVersion,
+      hasUpdate: false,
+      notesPreview: null,
+      fullNotes: null,
+      downloadUrl: null,
+      releaseUrl: null,
+      error: error instanceof Error ? error.message : 'Unknown error while checking for updates',
+    };
+  }
+});
+
+ipcMain.handle('download-and-run-update', async (_event, downloadUrl: string) => {
+  if (typeof downloadUrl !== 'string' || !downloadUrl.trim()) {
+    throw new Error('Invalid download URL');
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(downloadUrl);
+  } catch {
+    throw new Error('Invalid download URL');
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Update downloads must use HTTPS');
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const allowedHosts = ['github.com', 'objects.githubusercontent.com'];
+  if (!allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`))) {
+    throw new Error('Update download host is not allowed');
+  }
+
+  const tempDir = app.getPath('temp');
+  const fileNameFromUrl = path.basename(parsed.pathname) || 'Music-Setup.exe';
+  const targetPath = path.join(tempDir, fileNameFromUrl);
+
+  try {
+    const res = await fetch(downloadUrl);
+    if (!res.ok || !res.body) {
+      throw new Error(`Failed to download update (status ${res.status})`);
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    await fs.promises.writeFile(targetPath, Buffer.from(arrayBuffer));
+
+    // Launch installer; do not await its completion. Let the installer handle elevation/UI.
+    await shell.openPath(targetPath);
+
+    // Quit the app so the installer can replace files.
+    app.quit();
+
+    return;
+  } catch (error) {
+    try {
+      await fs.promises.unlink(targetPath);
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      error instanceof Error ? error.message : 'Unknown error while downloading update',
+    );
   }
 });
 

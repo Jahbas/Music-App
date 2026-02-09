@@ -30,7 +30,19 @@ declare global {
       getRunOnStartup?: () => Promise<boolean>;
       setRunOnStartup?: (value: boolean) => Promise<void>;
       setMinimizeToTray?: (value: boolean) => void;
+      getAppVersion?: () => Promise<string>;
       onTrayMenuAction?: (cb: (action: "pause" | "play" | "mute" | "unmute" | "show" | "quit") => void) => () => void;
+      checkForUpdates?: () => Promise<{
+        currentVersion: string;
+        latestVersion: string;
+        hasUpdate: boolean;
+        notesPreview: string | null;
+        fullNotes: string | null;
+        downloadUrl: string | null;
+        releaseUrl: string | null;
+        error?: string;
+      }>;
+      downloadAndRunUpdate?: (downloadUrl: string) => Promise<void>;
     };
     __getTrayMenuState?: () => { isPlaying: boolean; isMuted: boolean; theme: { accent: string; bg: string; surface: string; text: string; border: string; hover: string } };
   }

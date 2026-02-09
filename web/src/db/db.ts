@@ -60,7 +60,7 @@ interface SpotifyDb extends DBSchema {
 }
 
 const DB_NAME = "spotify-like-player";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 const dbPromise = openDB<SpotifyDb>(DB_NAME, DB_VERSION, {
   upgrade(db, oldVersion) {

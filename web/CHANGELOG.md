@@ -1,6 +1,7 @@
-## 1.6.0 - 2026-02-08
+## 1.7.0 - 2026-02-08
 
 ### New
+- **Open on startup:** New setting (Settings → General) to launch the app automatically when you log in (Windows, Mac, Linux; EXE only—does not affect web version). Optionally hides on startup if "Minimize to tray" is enabled.
 
 - **Minimize to system tray:** When closing the window, Music can hide to the system tray instead of quitting (Settings → General → Minimize to tray on close). Left-click the tray icon for a themed popup with Show, Pause/Play, Mute/Unmute, and Quit; right-click for the native context menu. Playback continues in the background.
 

@@ -14,17 +14,19 @@ type StoredPlayerPosition = {
   trackId: string;
   currentTime: number;
   isPlaying: boolean;
+  duration?: number;
 };
 
 function getStoredPlayerPosition(): {
   trackId: string | null;
   currentTime: number;
   isPlaying: boolean;
+  duration: number;
 } {
   try {
     const raw = localStorage.getItem(PLAYER_POSITION_KEY);
     if (!raw) {
-      return { trackId: null, currentTime: 0, isPlaying: false };
+      return { trackId: null, currentTime: 0, isPlaying: false, duration: 0 };
     }
     const parsed = JSON.parse(raw) as Partial<StoredPlayerPosition>;
     const trackId =
@@ -36,9 +38,13 @@ function getStoredPlayerPosition(): {
     const persistedIsPlaying = parsed != null && parsed.isPlaying === true;
     const autoPlayOnLoad = getAutoPlayOnLoad();
     const isPlaying = autoPlayOnLoad && persistedIsPlaying;
-    return { trackId, currentTime, isPlaying };
+    const duration =
+      parsed && typeof parsed.duration === "number" && parsed.duration > 0
+        ? parsed.duration
+        : 0;
+    return { trackId, currentTime, isPlaying, duration };
   } catch {
-    return { trackId: null, currentTime: 0, isPlaying: false };
+    return { trackId: null, currentTime: 0, isPlaying: false, duration: 0 };
   }
 }
 
@@ -46,6 +52,7 @@ function persistPlayerPosition(state: {
   currentTrackId: string | null;
   currentTime: number;
   isPlaying: boolean;
+  duration?: number;
 }): void {
   try {
     if (!state.currentTrackId) {
@@ -57,6 +64,9 @@ function persistPlayerPosition(state: {
       currentTime: state.currentTime || 0,
       isPlaying: state.isPlaying,
     };
+    if (typeof state.duration === "number" && state.duration > 0) {
+      payload.duration = state.duration;
+    }
     localStorage.setItem(PLAYER_POSITION_KEY, JSON.stringify(payload));
   } catch {
     // ignore
@@ -165,7 +175,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   repeat: getStoredRepeat(),
   volume: getStoredVolume(),
   currentTime: storedPosition.currentTime,
-  duration: 0,
+  duration: storedPosition.duration,
   playbackRate: getStoredPlaybackRate(),
   setQueue: (queue) => set({ queue }),
   playTrack: (trackId, queue) => {
@@ -211,11 +221,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (next) fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:togglePlay',message:'isPlaying set true',data:{source:'togglePlay'},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     set({ isPlaying: next });
-    const { currentTrackId, currentTime } = get();
+    const { currentTrackId, currentTime, duration } = get();
     persistPlayerPosition({
       currentTrackId,
       currentTime,
       isPlaying: next,
+      duration,
     });
   },
   toggleShuffle: () => {
@@ -266,11 +277,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   pause: () => {
     set({ isPlaying: false });
-    const { currentTrackId, currentTime } = get();
+    const { currentTrackId, currentTime, duration } = get();
     persistPlayerPosition({
       currentTrackId,
       currentTime,
       isPlaying: false,
+      duration,
     });
   },
   play: () => {
@@ -278,11 +290,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     fetch('http://127.0.0.1:7243/ingest/ac6a4641-4ef5-44d5-af07-c284a1a73d6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'playerStore.ts:play',message:'isPlaying set true',data:{source:'play'},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     set({ isPlaying: true });
-    const { currentTrackId, currentTime } = get();
+    const { currentTrackId, currentTime, duration } = get();
     persistPlayerPosition({
       currentTrackId,
       currentTime,
       isPlaying: true,
+      duration,
     });
   },
   next: () => {
@@ -368,11 +381,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   setCurrentTime: (time) => {
     set({ currentTime: time });
-    const { currentTrackId, isPlaying } = get();
+    const { currentTrackId, isPlaying, duration } = get();
     persistPlayerPosition({
       currentTrackId,
       currentTime: time,
       isPlaying,
+      duration,
     });
   },
   setDuration: (duration) => set({ duration }),
@@ -411,11 +425,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         ? next[0] ?? null
         : currentTrackId;
     set({ queue: next, currentTrackId: nextCurrent });
-    const { currentTime, isPlaying } = get();
+    const { currentTime, isPlaying, duration } = get();
     persistPlayerPosition({
       currentTrackId: nextCurrent,
       currentTime,
       isPlaying,
+      duration,
     });
   },
   reorderQueue: (fromIndex, toIndex) => {

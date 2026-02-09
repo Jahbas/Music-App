@@ -24,9 +24,12 @@ import {
   setArtistDataPersistent,
   getMinimizeToTray,
   setMinimizeToTray,
+  getAutoUpdateEnabled,
+  setAutoUpdateEnabled,
 } from "../utils/preferences";
 import { useArtistStore } from "../stores/artistStore";
 import { ColorPicker } from "./ColorPicker";
+import { useUpdateStore } from "../stores/updateStore";
 
 const OLED_UNLOCK_KEY = "oled-mode-unlocked";
 const OLED_UNLOCK_TAPS = 10;
@@ -117,6 +120,21 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [isEqPresetOpen, setIsEqPresetOpen] = useState(false);
   const [showAdvancedEq, setShowAdvancedEq] = useState(false);
   const eqPresetDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [autoUpdateEnabled, setAutoUpdateEnabledState] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const updateCurrentVersion = useUpdateStore((s) => s.currentVersion);
+  const updateLatestVersion = useUpdateStore((s) => s.latestVersion);
+  const updateNotesPreview = useUpdateStore((s) => s.notesPreview);
+  const updateReleaseUrl = useUpdateStore((s) => s.releaseUrl);
+  const updateDownloadUrl = useUpdateStore((s) => s.downloadUrl);
+  const updateHasUpdate = useUpdateStore((s) => s.hasUpdate);
+  const updateStatus = useUpdateStore((s) => s.status);
+  const checkingUpdate = useUpdateStore((s) => s.isChecking);
+  const updateCooldownSeconds = useUpdateStore((s) => s.cooldownSecondsRemaining);
+  const runCheckForUpdates = useUpdateStore((s) => s.checkForUpdates);
+  const decrementUpdateCooldown = useUpdateStore((s) => s.decrementCooldown);
+  const clearUpdateStatus = useUpdateStore((s) => s.clearStatus);
+  const setUpdateStatus = useUpdateStore((s) => s.setStatus);
 
   const EQ_PRESETS: { id: EqPresetId; label: string }[] = [
     { id: "flat", label: "Flat" },
@@ -161,6 +179,8 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       if (typeof open === "boolean") setRunOnStartupState(open);
     };
     void loadRunOnStartup();
+    setAutoUpdateEnabledState(getAutoUpdateEnabled());
+    clearUpdateStatus();
     setArtistDataPersistentState(getArtistDataPersistent());
     setConfirmClearArtistData(false);
     const getStorageUsage = async () => {
@@ -181,7 +201,15 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       }
     };
     void getStorageUsage();
-  }, [isOpen]);
+  }, [isOpen, clearUpdateStatus]);
+
+  useEffect(() => {
+    if (updateCooldownSeconds <= 0) return;
+    const id = window.setInterval(() => {
+      decrementUpdateCooldown(1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [updateCooldownSeconds, decrementUpdateCooldown]);
 
   useEffect(() => {
     if (!isEqPresetOpen) {
@@ -369,6 +397,113 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               title="Hide to tray instead of quitting"
             />
           </div>
+        )}
+        <div className="settings-row">
+          <span className="settings-row-label">Check for updates automatically</span>
+          <SettingsSwitch
+            checked={autoUpdateEnabled}
+            onChange={(next) => {
+              setAutoUpdateEnabled(next);
+              setAutoUpdateEnabledState(next);
+            }}
+            title="On app start, check GitHub for a new version"
+          />
+        </div>
+        {typeof window.electronAPI?.checkForUpdates === "function" && (
+          <>
+            <div className="settings-row">
+              <span className="settings-row-label">
+                Version{" "}
+                {updateCurrentVersion ?? "—"}
+                {updateLatestVersion && updateLatestVersion !== updateCurrentVersion
+                  ? ` → ${updateLatestVersion}`
+                  : ""}
+              </span>
+              <div className="settings-theme-toggle">
+                <button
+                  type="button"
+                  className="secondary-button settings-row-action"
+                  onClick={async () => {
+                    await runCheckForUpdates({ manual: true });
+                  }}
+                  disabled={checkingUpdate || updateCooldownSeconds > 0}
+                  title="Check GitHub Releases for a new desktop version"
+                >
+                  {checkingUpdate
+                    ? "Checking…"
+                    : updateCooldownSeconds > 0
+                    ? `Try again in ${updateCooldownSeconds}s`
+                    : "Check for updates"}
+                </button>
+              </div>
+            </div>
+            {updateStatus && (
+              <div className="settings-row">
+                <span className="settings-row-label" />
+                <span className="settings-row-label">{updateStatus}</span>
+              </div>
+            )}
+            {updateHasUpdate && (
+              <div className="settings-row">
+                <span className="settings-row-label">Update</span>
+                <div
+                  className="settings-theme-toggle"
+                  style={{ flexDirection: "column", alignItems: "flex-start" }}
+                >
+                  <span className="settings-row-label">
+                    New version: {updateLatestVersion ?? "—"}
+                  </span>
+                  {updateNotesPreview && (
+                    <p
+                      className="settings-info-body"
+                      style={{ marginTop: 4, maxWidth: 420, whiteSpace: "pre-wrap" }}
+                    >
+                      {updateNotesPreview}
+                    </p>
+                  )}
+                  <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="primary-button settings-row-action"
+                      disabled={
+                        installingUpdate ||
+                        !updateDownloadUrl ||
+                        typeof window.electronAPI?.downloadAndRunUpdate !== "function"
+                      }
+                      onClick={async () => {
+                        if (!updateDownloadUrl || !window.electronAPI?.downloadAndRunUpdate) return;
+                        setInstallingUpdate(true);
+                        setUpdateStatus("Downloading update and restarting…");
+                        try {
+                          await window.electronAPI.downloadAndRunUpdate(updateDownloadUrl);
+                        } catch {
+                          setInstallingUpdate(false);
+                          setUpdateStatus("Update download failed. Try again later.");
+                        }
+                      }}
+                    >
+                      {installingUpdate ? "Installing…" : "Install update"}
+                    </button>
+                    {updateReleaseUrl && (
+                      <button
+                        type="button"
+                        className="secondary-button settings-row-action"
+                        onClick={() => openExternalUrl(updateReleaseUrl)}
+                      >
+                        View on GitHub
+                      </button>
+                    )}
+                  </div>
+                  {!updateDownloadUrl && (
+                    <span className="settings-row-label" style={{ marginTop: 4 }}>
+                      Update found, but no Windows installer asset was detected. Use “View on GitHub” to
+                      download manually.
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
         <div className="settings-row">
           <span className="settings-row-label">Your Wrapped</span>

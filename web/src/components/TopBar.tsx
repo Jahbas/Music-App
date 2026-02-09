@@ -7,6 +7,7 @@ import { useProfileLikesStore } from "../stores/profileLikesStore";
 import { usePlaylistStore } from "../stores/playlistStore";
 import { useTelemetryStore } from "../stores/telemetryStore";
 import { getTelemetryEnabled } from "../utils/preferences";
+import { useUpdateStore } from "../stores/updateStore";
 import { CreateProfileModal } from "./CreateProfileModal";
 import { DeleteProfileModal } from "./DeleteProfileModal";
 import { SearchOverlay } from "./SearchOverlay";
@@ -35,6 +36,9 @@ export const TopBar = ({ isSettingsOpen, onOpenSettings, onCloseSettings }: TopB
   const hydrateProfileLikes = useProfileLikesStore((state) => state.hydrate);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const currentProfile = profiles.find((p) => p.id === currentProfileId);
+  const currentVersion = useUpdateStore((s) => s.currentVersion);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate);
 
   useEffect(() => {
     setQuery(searchParams.get("q") ?? "");
@@ -136,6 +140,14 @@ export const TopBar = ({ isSettingsOpen, onOpenSettings, onCloseSettings }: TopB
 
   return (
     <div className="topbar">
+      <div className="topbar-version">
+        {currentVersion && (
+          <span className="topbar-version-label">
+            v{currentVersion}
+            {hasUpdate && latestVersion && latestVersion !== currentVersion ? ` → v${latestVersion}` : ""}
+          </span>
+        )}
+      </div>
       <form className="search-form" onSubmit={handleSubmit}>
         <input
           ref={topbarInputRef}

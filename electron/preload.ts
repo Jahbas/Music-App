@@ -73,6 +73,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('tray-menu-action', handler);
     return () => ipcRenderer.removeListener('tray-menu-action', handler);
   },
+  /** Get the current app version string from the main process. */
+  getAppVersion: () => {
+    return ipcRenderer.invoke('get-app-version') as Promise<string>;
+  },
+  /** Check for app updates via main process (GitHub Releases). */
+  checkForUpdates: () => {
+    return ipcRenderer.invoke('check-for-updates') as Promise<{
+      currentVersion: string;
+      latestVersion: string;
+      hasUpdate: boolean;
+      notesPreview: string | null;
+      fullNotes: string | null;
+      downloadUrl: string | null;
+      releaseUrl: string | null;
+      error?: string;
+    }>;
+  },
+  /** Download the latest installer and run it, then quit the app. */
+  downloadAndRunUpdate: (downloadUrl: string) => {
+    return ipcRenderer.invoke('download-and-run-update', downloadUrl) as Promise<void>;
+  },
 });
 
 export {};

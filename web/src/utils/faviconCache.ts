@@ -37,22 +37,14 @@ function remoteUrl(domain: string): string {
   return `${FAVICON_BASE}${encodeURIComponent(domain)}&sz=${FAVICON_SIZE}`;
 }
 
-async function fetchAndCache(domain: string): Promise<void> {
-  const url = remoteUrl(domain);
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-    cache.set(domain.toLowerCase(), dataUrl);
-  } catch {
-    // Leave uncached; getFaviconUrl will return remote URL as fallback
-  }
+/**
+ * Preload a favicon by creating an <img> pointing at the remote URL.
+ * This avoids CORS issues from using fetch() while still warming the
+ * browser's HTTP cache so icons display quickly when first rendered.
+ */
+function preloadFavicon(domain: string): void {
+  const img = new Image();
+  img.src = remoteUrl(domain);
 }
 
 /**
@@ -62,7 +54,8 @@ async function fetchAndCache(domain: string): Promise<void> {
 export function startFaviconPreload(): void {
   if (preloadStarted) return;
   preloadStarted = true;
-  Promise.all(FAVICON_PRELOAD_DOMAINS.map((d) => fetchAndCache(d))).catch(() => {});
+  // Fire-and-forget; no need to await.
+  FAVICON_PRELOAD_DOMAINS.forEach((d) => preloadFavicon(d));
 }
 
 /**

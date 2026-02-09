@@ -13,6 +13,7 @@ import { usePlayerStore } from "../stores/playerStore";
 import { useTelemetry } from "../hooks/useTelemetry";
 import { useShortcuts } from "../hooks/useShortcuts";
 import { getMinimizeToTray } from "../utils/preferences";
+import { imageDb } from "../db/db";
 import { AddSongsProgress } from "./AddSongsProgress";
 import { DragAddToPlaylistOverlay } from "./DragAddToPlaylistOverlay";
 import { LikedSongToast } from "./LikedSongToast";
@@ -21,6 +22,7 @@ import { QueuePanel } from "./QueuePanel";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SettingsModal } from "./SettingsModal";
+import { useUpdateStore } from "../stores/updateStore";
 
 export const Layout = () => {
   const navigate = useNavigate();
@@ -43,6 +45,17 @@ export const Layout = () => {
   const [draggingTrackIds, setDraggingTrackIds] = useState<string[]>([]);
   const [queuePanelOpen, setQueuePanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [installingUpdateFromPrompt, setInstallingUpdateFromPrompt] = useState(false);
+  const checkForUpdates = useUpdateStore((s) => s.checkForUpdates);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
+  const currentVersion = useUpdateStore((s) => s.currentVersion);
+  const notesPreview = useUpdateStore((s) => s.notesPreview);
+  const releaseUrl = useUpdateStore((s) => s.releaseUrl);
+  const downloadUrl = useUpdateStore((s) => s.downloadUrl);
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate);
+  const shouldShowUpdatePrompt = useUpdateStore((s) => s.shouldShowPrompt);
+  const setUpdateStatus = useUpdateStore((s) => s.setStatus);
+  const markUpdatePromptSeen = useUpdateStore((s) => s.markPromptSeen);
 
   useEffect(() => {
     if (settingsOpen) setQueuePanelOpen(false);
@@ -53,6 +66,17 @@ export const Layout = () => {
       window.electronAPI.setMinimizeToTray(getMinimizeToTray());
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.electronAPI?.checkForUpdates) return;
+    // Always perform a single background check on app startup so version
+    // information and update availability are populated without having to
+    // visit Settings or toggle any pref first.
+    void checkForUpdates({ manual: false }).catch(() => {
+      // Ignore background update check failures.
+    });
+  }, [checkForUpdates]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI?.onTrayMenuAction) return;
@@ -225,6 +249,77 @@ export const Layout = () => {
       )}
       {queuePanelOpen && (
         <QueuePanel onClose={() => setQueuePanelOpen(false)} />
+      )}
+      {hasUpdate && shouldShowUpdatePrompt && (
+        <div className="update-prompt">
+          <div className="update-prompt-content">
+            <div className="update-prompt-header">
+              <span className="update-prompt-title">New version available</span>
+              <button
+                type="button"
+                className="update-prompt-close"
+                aria-label="Dismiss update notification"
+                onClick={markUpdatePromptSeen}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="update-prompt-subtitle">
+              {currentVersion && latestVersion
+                ? `You’re on v${currentVersion}. v${latestVersion} is ready with improvements and fixes.`
+                : "A new version of Music is available with improvements and fixes."}
+            </p>
+            {notesPreview && (
+              <div className="update-prompt-notes">
+                <p className="update-prompt-notes-title">What’s new</p>
+                <p className="update-prompt-notes-body">{notesPreview}</p>
+              </div>
+            )}
+            <div className="update-prompt-actions">
+              <button
+                type="button"
+                className="primary-button"
+                disabled={
+                  installingUpdateFromPrompt ||
+                  !downloadUrl ||
+                  typeof window.electronAPI?.downloadAndRunUpdate !== "function"
+                }
+                onClick={async () => {
+                  if (!downloadUrl || !window.electronAPI?.downloadAndRunUpdate) return;
+                  setInstallingUpdateFromPrompt(true);
+                  setUpdateStatus("Downloading update and restarting…");
+                  try {
+                    await window.electronAPI.downloadAndRunUpdate(downloadUrl);
+                  } catch {
+                    setInstallingUpdateFromPrompt(false);
+                    setUpdateStatus("Update download failed. Try again later.");
+                  }
+                }}
+              >
+                {installingUpdateFromPrompt ? "Installing…" : "Install update"}
+              </button>
+              {releaseUrl && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    window.electronAPI?.openExternal?.(releaseUrl);
+                    markUpdatePromptSeen();
+                  }}
+                >
+                  View details
+                </button>
+              )}
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={markUpdatePromptSeen}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <AddSongsProgress />
       <LikedSongToast />
