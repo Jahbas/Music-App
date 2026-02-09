@@ -415,11 +415,15 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           <>
             <div className="settings-row">
               <span className="settings-row-label">
-                Version{" "}
-                {updateCurrentVersion ?? "—"}
-                {updateLatestVersion && updateLatestVersion !== updateCurrentVersion
-                  ? ` → ${updateLatestVersion}`
-                  : ""}
+                {(() => {
+                  const current = updateCurrentVersion ?? "—";
+                  const showUpgradeArrow =
+                    updateHasUpdate &&
+                    updateLatestVersion &&
+                    updateLatestVersion !== updateCurrentVersion;
+                  const arrow = showUpgradeArrow ? ` → ${updateLatestVersion}` : "";
+                  return `Version ${current}${arrow}`;
+                })()}
               </span>
               <div className="settings-theme-toggle">
                 <button
